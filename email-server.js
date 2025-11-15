@@ -2,8 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import { Resend } from 'resend';
 import { MongoClient } from 'mongodb';
-import multer from 'multer';
-import videoRoutes from './routes/videoUpload.js';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -15,28 +13,8 @@ let mongoClient;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '100mb' })); // Increased limit for video uploads
+app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-
-// Mount video upload routes
-app.use('/api', videoRoutes);
-
-// Configure multer for memory storage (videos stored in memory before MongoDB)
-const storage = multer.memoryStorage();
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    // Accept video files
-    if (file.mimetype.startsWith('video/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only video files are allowed'));
-    }
-  }
-});
 
 // Initialize Resend
 const resend = new Resend(process.env.RESEND_API_KEY || 're_NZzC538G_L44QCHEyZmkmJBy7JMBqkypF');
@@ -44,17 +22,14 @@ const resend = new Resend(process.env.RESEND_API_KEY || 're_NZzC538G_L44QCHEyZmk
 // Connect to MongoDB
 async function connectMongoDB() {
   try {
+    if (mongoClient) return mongoClient.db(DB_NAME);
+
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
-    console.log('Connected to MongoDB');
-
-    // Initialize GridFS for video uploads
-    const db = mongoClient.db(DB_NAME);
-    videoRoutes.initializeGridFS(mongoClient);
-
-    return db;
+    console.log('✅ MongoDB connected successfully!');
+    return mongoClient.db(DB_NAME);
   } catch (error) {
-    console.error('MongoDB connection error:', error);
+    console.error('❌ MongoDB connection error:', error);
     return null;
   }
 }
@@ -71,11 +46,14 @@ app.post('/interview-results', async (req, res) => {
     const interviewData = {
       ...req.body,
       created_at: new Date(),
-      id: Date.now().toString() // Simple ID generation
+      id: Date.now().toString(),
+      interview_type: 'video_interview',
+      status: 'completed'
     };
 
     const result = await collection.insertOne(interviewData);
-    console.log('Interview results saved to MongoDB:', result.insertedId);
+    console.log('✅ Interview results saved to MongoDB:', result.insertedId);
+    console.log('📊 Saved data for candidate:', req.body.candidate_email, 'Score:', req.body.interview_score);
 
     res.json({
       success: true,
@@ -84,12 +62,47 @@ app.post('/interview-results', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error saving interview results:', error);
+    console.error('❌ Error saving interview results:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/interview-results', async (req, res) => {
+   try {
+     const db = await connectMongoDB();
+     if (!db) {
+       return res.status(500).json({ success: false, error: 'Database connection failed' });
+     }
+
+     const collection = db.collection('interview_results');
+
+     // Build filter
+     const filter = {};
+     if (req.query.candidate_id) filter.candidate_id = req.query.candidate_id;
+     if (req.query.candidate_email) filter.candidate_email = { $regex: req.query.candidate_email, $options: 'i' };
+     if (req.query.job_id) filter.job_id = req.query.job_id;
+     if (req.query.status) filter.status = req.query.status;
+
+     const interviews = await collection
+       .find(filter)
+       .sort({ created_at: -1 })
+       .limit(100)
+       .toArray();
+
+     res.json({
+       success: true,
+       data: interviews,
+       count: interviews.length
+     });
+
+   } catch (error) {
+     console.error('❌ Error fetching interview results:', error);
+     res.status(500).json({ success: false, error: error.message });
+   }
+ });
+
+// Get single interview result by ID
+app.get('/interview-results/:id', async (req, res) => {
   try {
     const db = await connectMongoDB();
     if (!db) {
@@ -97,31 +110,24 @@ app.get('/interview-results', async (req, res) => {
     }
 
     const collection = db.collection('interview_results');
+    const interview = await collection.findOne({
+      $or: [
+        { id: req.params.id },
+        { _id: req.params.id }
+      ]
+    });
 
-    // Build filter
-    const filter = {};
-    if (req.query.candidate_id) {
-      filter.candidate_id = req.query.candidate_id;
+    if (!interview) {
+      return res.status(404).json({ success: false, error: 'Interview result not found' });
     }
-    if (req.query.candidate_email) {
-      filter.candidate_email = req.query.candidate_email;
-    }
-    if (req.query.status) {
-      filter.status = req.query.status;
-    }
-
-    const interviews = await collection
-      .find(filter)
-      .sort({ created_at: -1 })
-      .toArray();
 
     res.json({
       success: true,
-      data: interviews
+      data: interview
     });
 
   } catch (error) {
-    console.error('Error fetching interview results:', error);
+    console.error('❌ Error fetching interview result:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -155,7 +161,7 @@ app.get('/activity-logs', async (req, res) => {
 
     const total = await collection.countDocuments(filter);
 
-    // Project out the video_data field for performance (but include metadata)
+    // Get the logs first, then add computed fields
     const logs = await collection
       .find(filter)
       .sort({ created_at: -1 })
@@ -163,11 +169,15 @@ app.get('/activity-logs', async (req, res) => {
       .limit(limit)
       .project({
         video_data: 0, // Exclude binary video data from response
-        video_mime_type: 1, // Include metadata
-        has_video: { $ne: ["$video_data", null] }, // Add flag to indicate video presence
-        video_size: { $size: { $ifNull: ["$video_data", []] } } // Video size in bytes
+        _id: 0 // Exclude MongoDB _id
       })
       .toArray();
+
+    // Add computed fields for video metadata
+    logs.forEach(log => {
+      log.has_video = log.video_mime_type && log.video_mime_type.length > 0;
+      log.video_size = log.has_video ? (log.video_data_size || 0) : 0;
+    });
 
     // Also add server_logs video information if videos are stored there
     const serverLogsCollection = db.collection('server_logs');
@@ -211,84 +221,6 @@ app.get('/activity-logs', async (req, res) => {
   }
 });
 
-// Multer-based video upload endpoint
-app.post('/activity-logs/upload-video', upload.single('video'), async (req, res) => {
-  try {
-    const db = await connectMongoDB();
-    if (!db) {
-      return res.status(500).json({ success: false, error: 'Database connection failed' });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No video file uploaded' });
-    }
-
-    const collection = db.collection('activity_logs');
-    const activityLog = {
-      ...req.body,
-      created_at: new Date(),
-      id: Date.now().toString(),
-      video_data: req.file.buffer, // Store video buffer from multer
-      video_mime_type: req.file.mimetype,
-      video_size_bytes: req.file.size,
-      video_size_mb: (req.file.size / 1024 / 1024).toFixed(2),
-      video_original_name: req.file.originalname,
-      video_uploaded_via: 'multer',
-      uploaded_at: new Date()
-    };
-
-    const result = await collection.insertOne(activityLog);
-    console.log('Activity log with video saved to MongoDB:', result.insertedId);
-    console.log('Video data stored via multer:', req.file.size, 'bytes');
-
-    // Also save to server_logs collection
-    const serverLogsCollection = db.collection('server_logs');
-    const serverLogEntry = {
-      activity_log_id: result.insertedId.toString(),
-      type: 'video_storage_multer',
-      candidate_id: activityLog.candidate_id,
-      candidate_email: activityLog.candidate_email,
-      job_position: activityLog.job_position,
-      video_data: req.file.buffer,
-      video_mime_type: req.file.mimetype,
-      video_size_bytes: req.file.size,
-      video_size_mb: (req.file.size / 1024 / 1024).toFixed(2),
-      video_original_name: req.file.originalname,
-      interview_score: activityLog.interview_score,
-      stored_at: new Date(),
-      collection: 'activity_logs',
-      upload_method: 'multer',
-      metadata: {
-        video_url: activityLog.video_url,
-        interview_details: activityLog.interview_details,
-        user_agent: req.headers['user-agent'],
-        ip_address: req.ip || req.connection.remoteAddress,
-        multer_info: {
-          fieldname: req.file.fieldname,
-          encoding: req.file.encoding,
-          destination: req.file.destination,
-          filename: req.file.filename
-        }
-      }
-    };
-
-    const serverLogResult = await serverLogsCollection.insertOne(serverLogEntry);
-    console.log('Video also saved to server_logs collection via multer:', serverLogResult.insertedId);
-
-    res.json({
-      success: true,
-      id: result.insertedId,
-      data: {
-        ...activityLog,
-        video_data: undefined // Don't send binary data in response
-      }
-    });
-
-  } catch (error) {
-    console.error('Error saving activity log with multer:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // Original endpoint (keeping for backward compatibility)
 app.post('/activity-logs', async (req, res) => {
@@ -428,133 +360,9 @@ app.post('/send-email', async (req, res) => {
   }
 });
 
-// Store uploaded videos in memory for auto-fill functionality
-const uploadedVideos = new Map(); // Store videos by session/token
+// Video storage disabled in simplified mode
 
-// Endpoint to upload recorded video from InterviewQuiz component
-app.post('/interview-video-upload', upload.single('video'), async (req, res) => {
-  try {
-    console.log('🎬 Interview video upload received');
-    console.log('📋 Request body:', req.body);
-    console.log('📁 File info:', req.file ? {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      sizeMB: (req.file.size / 1024 / 1024).toFixed(2)
-    } : 'No file');
 
-    if (!req.file) {
-      console.log('❌ No video file in request');
-      return res.status(400).json({ success: false, error: 'No video file uploaded' });
-    }
-
-    // Use provided session ID or generate a new one
-    const sessionId = req.body.sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    console.log('🔑 Using session ID:', sessionId);
-
-    // Store video information
-    const videoInfo = {
-      sessionId,
-      originalName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
-      sizeMB: (req.file.size / 1024 / 1024).toFixed(2),
-      buffer: req.file.buffer,
-      uploadedAt: new Date(),
-      candidateInfo: {
-        candidateId: req.body.candidateId,
-        candidateName: req.body.candidateName,
-        candidateEmail: req.body.candidateEmail,
-        jobId: req.body.jobId,
-        jobPosition: req.body.jobPosition
-      }
-    };
-
-    // Store in memory map
-    uploadedVideos.set(sessionId, videoInfo);
-    console.log(`✅ Interview video stored for session ${sessionId}`);
-    console.log(`📊 Video details: ${videoInfo.sizeMB}MB, ${videoInfo.mimeType}`);
-    console.log(`👤 Candidate: ${videoInfo.candidateInfo.candidateName || 'Unknown'}`);
-    console.log(`💼 Position: ${videoInfo.candidateInfo.jobPosition || 'Unknown'}`);
-    console.log(`📈 Total stored videos: ${uploadedVideos.size}`);
-
-    res.json({
-      success: true,
-      sessionId,
-      videoInfo: {
-        size: videoInfo.size,
-        sizeMB: videoInfo.sizeMB,
-        mimeType: videoInfo.mimeType,
-        uploadedAt: videoInfo.uploadedAt
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error uploading interview video:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get stored video by session ID
-app.get('/interview-video/:sessionId', (req, res) => {
-  try {
-    const sessionId = req.params.sessionId;
-    console.log('🎬 Looking for video with session ID:', sessionId);
-    console.log('📋 Available sessions:', Array.from(uploadedVideos.keys()));
-
-    const videoInfo = uploadedVideos.get(sessionId);
-
-    if (!videoInfo) {
-      console.log('❌ Video not found for session:', sessionId);
-      return res.status(404).json({
-        error: 'Video not found for this session',
-        availableSessions: Array.from(uploadedVideos.keys())
-      });
-    }
-
-    console.log('✅ Found video for session:', sessionId, {
-      size: videoInfo.sizeMB + 'MB',
-      mimeType: videoInfo.mimeType
-    });
-
-    // Set headers and return video
-    res.setHeader('Content-Type', videoInfo.mimeType);
-    res.setHeader('Content-Length', videoInfo.buffer.length);
-    res.setHeader('Content-Disposition', `inline; filename="${videoInfo.originalName}"`);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
-
-    res.send(videoInfo.buffer);
-
-  } catch (error) {
-    console.error('❌ Error retrieving interview video:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get list of uploaded videos
-app.get('/uploaded-videos', (req, res) => {
-  try {
-    const videos = Array.from(uploadedVideos.entries()).map(([sessionId, videoInfo]) => ({
-      sessionId,
-      candidateName: videoInfo.candidateInfo.candidateName,
-      candidateEmail: videoInfo.candidateInfo.candidateEmail,
-      jobPosition: videoInfo.candidateInfo.jobPosition,
-      sizeMB: videoInfo.sizeMB,
-      uploadedAt: videoInfo.uploadedAt,
-      mimeType: videoInfo.mimeType
-    }));
-
-    res.json({
-      success: true,
-      videos: videos
-    });
-
-  } catch (error) {
-    console.error('❌ Error listing uploaded videos:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // Simple HTML page for video analysis and auto-fill
 app.get('/video-analysis', (req, res) => {
@@ -786,14 +594,44 @@ app.get('/video-analysis', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
-    message: 'Email server is running',
-    uploadedVideosCount: uploadedVideos.size,
-    videoAnalysisUrl: 'http://localhost:3002/video-analysis'
+    message: 'HireZen Email Server (Simplified Mode)',
+    mode: 'simplified',
+    videoStorage: 'disabled',
+    database: 'none',
+    timestamp: new Date().toISOString()
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Email server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Uploaded videos endpoint: http://localhost:${PORT}/uploaded-videos`);
+// Initialize server with MongoDB connection
+async function initializeServer() {
+  console.log('🚀 Starting HireZen Server...');
+
+  // Test MongoDB connection
+  try {
+    const db = await connectMongoDB();
+    if (db) {
+      console.log('✅ MongoDB connected successfully!');
+      console.log('📊 Database: hirezen');
+      console.log('💾 Interview data storage: Enabled');
+    } else {
+      console.log('❌ MongoDB connection failed!');
+      console.log('⚠️  Server will continue but data storage disabled');
+    }
+  } catch (error) {
+    console.error('❌ MongoDB initialization error:', error.message);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`📧 HireZen Server running on port ${PORT}`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+    console.log(`✉️  Email service: Ready`);
+    console.log(`📝 Interview results storage: Ready`);
+    console.log(`📋 Activity logs: Ready`);
+    console.log(`🌐 Frontend expected at: http://localhost:8080`);
+  });
+}
+
+initializeServer().catch(error => {
+  console.error('❌ Server startup failed:', error);
+  process.exit(1);
 });

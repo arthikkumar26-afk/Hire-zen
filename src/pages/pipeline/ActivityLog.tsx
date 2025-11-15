@@ -2,16 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowRight, Briefcase, Clock, User, ChevronDown, ChevronUp, Video, CheckCircle, XCircle, Search, Mail, Trophy } from "lucide-react";
+import { Loader2, ArrowRight, Briefcase, Clock, User, Search, Mail, Trophy, Video } from "lucide-react";
 import TopNavBar from "@/components/layout/TopNavBar";
 import Sidebar from "@/components/layout/Sidebar";
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import InterviewDetailsModal from "@/components/pipeline/InterviewDetailsModal";
 
 interface ActivityLog {
   id: string;
@@ -35,46 +30,27 @@ interface ActivityLog {
   };
 }
 
-interface InterviewActivity {
-  id: string;
-  candidate_id: string;
-  candidate_name: string;
-  candidate_email: string;
-  job_position: string;
-  score: number;
-  status: string;
-  completed_at: string;
-  video_url: string | null;
-  questions: any[];
-  answers: any[];
-  evaluation: any;
-  video_analysis?: any;
-}
-
 const ActivityLog = () => {
-  const [expandedInterviews, setExpandedInterviews] = useState<Set<string>>(new Set());
-  const [selectedInterview, setSelectedInterview] = useState<InterviewActivity | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
   // Enhanced filtering state
   const [emailFilter, setEmailFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
-  const [filteredActivities, setFilteredActivities] = useState<ActivityLog[]>([]);
 
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
-  const [isLoadingActivities, setIsLoadingActivities] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 0 });
+  // Activity logs from MongoDB (primary data source for pipeline changes)
+  const { data: activityLogs, isLoading: activityLogsLoading, refetch: refetchActivityLogs } = useQuery({
+    queryKey: ["activity-logs-mongodb", emailFilter, stageFilter],
+    queryFn: async () => {
+      const filters: Record<string, string> = {};
+      if (emailFilter) filters.candidate_email = emailFilter;
+      if (stageFilter && stageFilter !== 'all') {
+        if (stageFilter === 'interview') filters.new_stage = 'Interview Started';
+        if (stageFilter === 'passed') filters.new_stage = 'Interview Passed';
+        if (stageFilter === 'failed') filters.new_stage = 'Interview Failed';
+      }
 
-  const loadActivities = async (page = 1, filters: Record<string, string> = {}) => {
-    setIsLoadingActivities(true);
-    try {
       const queryParams = new URLSearchParams();
-      queryParams.append('page', page.toString());
-      queryParams.append('limit', '50');
-
-      // Apply filters
+      queryParams.append('limit', '100');
       Object.entries(filters).forEach(([key, value]) => {
-        if (value) queryParams.append(key, value);
+        queryParams.append(key, value);
       });
 
       const response = await fetch(`http://localhost:3002/activity-logs?${queryParams.toString()}`);
@@ -84,140 +60,26 @@ const ActivityLog = () => {
       }
 
       const result = await response.json();
-
-      if (result.success) {
-        setActivities(result.data || []);
-        setPagination(result.pagination);
-      } else {
-        throw new Error(result.error || 'Failed to load activity logs');
-      }
-    } catch (error) {
-      console.error('Error loading activity logs:', error);
-      // Fallback to empty array
-      setActivities([]);
-    } finally {
-      setIsLoadingActivities(false);
-    }
-  };
-
-  // Load activities on mount and filter changes
-  useEffect(() => {
-    const filters: Record<string, string> = {};
-    if (emailFilter) filters.candidate_email = emailFilter;
-    if (stageFilter && stageFilter !== 'all') {
-      // Map stage filters to MongoDB query
-      if (stageFilter === 'interview') filters.job_position = 'Interview';
-      if (stageFilter === 'passed') filters.new_stage = 'Interview Passed';
-      if (stageFilter === 'failed') filters.new_stage = 'Interview Failed';
-    }
-
-    loadActivities(1, filters);
-  }, [emailFilter, stageFilter]);
-
-  // Client-side filtering for already loaded activities
-  useEffect(() => {
-    if (!activities) return;
-
-    let filtered = activities;
-
-    if (emailFilter.trim()) {
-      filtered = filtered.filter(activity =>
-        activity.candidate_email?.toLowerCase().includes(emailFilter.toLowerCase()) ||
-        activity.candidate_name?.toLowerCase().includes(emailFilter.toLowerCase())
-      );
-    }
-
-    if (stageFilter && stageFilter !== "all") {
-      if (stageFilter === "interview") {
-        filtered = filtered.filter(activity =>
-          activity.new_stage?.includes("Interview")
-        );
-      } else if (stageFilter === "passed") {
-        filtered = filtered.filter(activity =>
-          activity.new_stage?.includes("Passed")
-        );
-      } else if (stageFilter === "failed") {
-        filtered = filtered.filter(activity =>
-          activity.new_stage?.includes("Failed")
-        );
-      }
-    }
-
-    setFilteredActivities(filtered);
-  }, [activities, emailFilter, stageFilter]);
-
-  const { data: interviews, isLoading: interviewsLoading, refetch: refetchInterviews } = useQuery({
-    queryKey: ["completed-interviews-activity"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("ai_interviews")
-        .select(`
-          id,
-          candidate_id,
-          score,
-          status,
-          completed_at,
-          video_url,
-          video_analysis,
-          questions,
-          answers,
-          evaluation,
-          candidates (
-            full_name,
-            email,
-            jobs (
-              position
-            )
-          )
-        `)
-        .eq("status", "completed")
-        .order("completed_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      
-      return data.map((interview: any) => ({
-        id: interview.id,
-        candidate_id: interview.candidate_id,
-        candidate_name: interview.candidates?.full_name || "Unknown",
-        candidate_email: interview.candidates?.email || "",
-        job_position: interview.candidates?.jobs?.position || "N/A",
-        score: interview.score || 0,
-        status: interview.status,
-        completed_at: interview.completed_at,
-        video_url: interview.video_url,
-        video_analysis: interview.video_analysis,
-        questions: interview.questions || [],
-        answers: interview.answers || [],
-        evaluation: interview.evaluation || {},
-      })) as InterviewActivity[];
+      return result.success ? result.data : [];
     },
   });
 
-  // Filter rejected and passed interviews
-  const rejectedInterviews = interviews?.filter(i => i.score < 50) || [];
-  const passedInterviews = interviews?.filter(i => i.score >= 10) || [];
+  // Filter activity logs by status
+  const interviewActivities = activityLogs?.filter(log =>
+    log.new_stage?.includes('Interview') || log.interview_score
+  ) || [];
 
-  const toggleInterview = (id: string) => {
-    setExpandedInterviews(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  const passedActivities = interviewActivities.filter(log =>
+    log.interview_score >= 50 || log.new_stage?.includes('Passed')
+  );
 
-  const openInterviewDetails = (interview: InterviewActivity) => {
-    setSelectedInterview(interview);
-    setIsModalOpen(true);
-  };
+  const failedActivities = interviewActivities.filter(log =>
+    log.interview_score < 50 || log.new_stage?.includes('Failed')
+  );
 
-  const isLoading = isLoadingActivities || interviewsLoading;
+  const isLoading = activityLogsLoading;
 
-  // Set up realtime subscriptions
+  // Set up realtime subscriptions for MongoDB data
   useEffect(() => {
     const activityChannel = supabase
       .channel('activity-log-changes')
@@ -229,32 +91,15 @@ const ActivityLog = () => {
           table: 'pipeline_activity_logs'
         },
         () => {
-          loadActivities(1); // Refetch activities from MongoDB
-        }
-      )
-      .subscribe();
-
-    const interviewChannel = supabase
-      .channel('interview-completion-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'ai_interviews',
-          filter: 'status=eq.completed'
-        },
-        () => {
-          refetchInterviews();
+          refetchActivityLogs(); // Refetch activities from MongoDB
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(activityChannel);
-      supabase.removeChannel(interviewChannel);
     };
-  }, [refetchInterviews]);
+  }, [refetchActivityLogs]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -278,26 +123,25 @@ const ActivityLog = () => {
                     <div className="flex-1">
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
+                        <input
                           placeholder="Search by email or candidate name..."
                           value={emailFilter}
                           onChange={(e) => setEmailFilter(e.target.value)}
-                          className="pl-10"
+                          className="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm"
                         />
                       </div>
                     </div>
                     <div className="sm:w-48">
-                      <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Filter by stage" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Stages</SelectItem>
-                          <SelectItem value="interview">Interview Related</SelectItem>
-                          <SelectItem value="passed">Interview Passed</SelectItem>
-                          <SelectItem value="failed">Interview Failed</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <select
+                        value={stageFilter}
+                        onChange={(e) => setStageFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
+                      >
+                        <option value="all">All Stages</option>
+                        <option value="interview">Interview Related</option>
+                        <option value="passed">Interview Passed</option>
+                        <option value="failed">Interview Failed</option>
+                      </select>
                     </div>
                   </div>
                 </CardContent>
@@ -305,149 +149,84 @@ const ActivityLog = () => {
             </div>
 
             {/* Rejected Candidates */}
-            {rejectedInterviews.length > 0 && (
+            {failedActivities.length > 0 && (
               <Card className="border-destructive/50">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-destructive">
-                    <XCircle className="h-5 w-5" />
-                    Rejected Candidates (Score &lt; 50%)
+                    <div className="h-5 w-5 rounded-full bg-destructive flex items-center justify-center">
+                      <span className="text-xs text-destructive-foreground">✗</span>
+                    </div>
+                    Rejected Candidates (Score {'<'} 50%)
                   </CardTitle>
                   <CardDescription>
-                    {rejectedInterviews.length} candidate{rejectedInterviews.length !== 1 ? 's' : ''} with low interview scores
+                    {failedActivities.length} candidate{failedActivities.length !== 1 ? 's' : ''} with low interview scores
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {rejectedInterviews.map((interview) => {
-                      const isExpanded = expandedInterviews.has(interview.id);
-                      const evaluation = interview.evaluation || {};
-                      const wrongAnswers = evaluation.answerEvaluations?.filter((a: any) => a.score < 70) || [];
-                      
-                      return (
-                        <div
-                          key={interview.id}
-                          className="rounded-lg border-2 border-destructive/30 bg-destructive/5 overflow-hidden"
-                        >
-                          <div className="p-4">
-                            <div className="flex items-start justify-between gap-4 mb-3">
-                              <div className="flex-1">
-                                <h4 
-                                  className="font-semibold text-foreground flex items-center gap-2 cursor-pointer hover:text-primary transition-colors"
-                                  onClick={() => openInterviewDetails(interview)}
-                                >
-                                  {interview.candidate_name}
-                                  <Badge variant="destructive" className="text-xs">
-                                    {interview.score}% - Rejected
-                                  </Badge>
-                                </h4>
-                                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                                  <Briefcase className="h-3 w-3" />
-                                  {interview.job_position}
-                                </p>
-                                <p className="text-xs text-destructive font-medium mt-1">
-                                  {wrongAnswers.length} wrong answer{wrongAnswers.length !== 1 ? 's' : ''}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {formatDistanceToNow(new Date(interview.completed_at), {
-                                    addSuffix: true,
-                                  })}
-                                </span>
-                              </div>
+                    {failedActivities.map((activity) => (
+                      <div
+                        key={activity.id}
+                        className="rounded-lg border-2 border-destructive/30 bg-destructive/5 overflow-hidden"
+                      >
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-foreground flex items-center gap-2">
+                                {activity.candidate_name}
+                                <Badge variant="destructive" className="text-xs">
+                                  {activity.interview_score || 0}% - Rejected
+                                </Badge>
+                              </h4>
+                              <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                                <Briefcase className="h-3 w-3" />
+                                {activity.job_position}
+                              </p>
+                              <p className="text-xs text-destructive font-medium mt-1">
+                                Interview Failed
+                              </p>
                             </div>
-
-                            <Progress value={interview.score} className="mb-3" />
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleInterview(interview.id)}
-                              className="w-full justify-between"
-                            >
-                              <span>View Wrong Answers</span>
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                            </Button>
+                            <div className="text-right">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {formatDistanceToNow(new Date(activity.created_at), {
+                                  addSuffix: true,
+                                })}
+                              </span>
+                            </div>
                           </div>
 
-                          {isExpanded && (
-                            <div className="border-t bg-muted/50 p-4 space-y-4">
-                              {/* Wrong Answers Only */}
-                              <div>
-                                <h5 className="font-semibold text-sm mb-3 text-destructive">Wrong Answers</h5>
-                                <div className="space-y-3">
-                                  {wrongAnswers.map((answer: any, idx: number) => {
-                                    const question = interview.questions[answer.questionIndex];
-                                    const candidateAnswer = interview.answers[answer.questionIndex];
-                                    
-                                    return (
-                                      <div
-                                        key={idx}
-                                        className="p-3 rounded-lg border-2 border-red-200 bg-red-50/50 dark:bg-red-950/20"
-                                      >
-                                        <div className="flex items-start gap-3 mb-2">
-                                          <div className="flex-shrink-0 mt-0.5 p-1 rounded-full bg-red-100 dark:bg-red-900">
-                                            <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                                          </div>
-                                          
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-start justify-between gap-2 mb-2">
-                                              <h6 className="font-semibold text-sm flex items-center gap-2">
-                                                <span className="text-red-700 dark:text-red-300">
-                                                  Q{answer.questionIndex + 1}.
-                                                </span>
-                                                <span>{question?.question}</span>
-                                              </h6>
-                                              <Badge variant="destructive" className="flex-shrink-0">
-                                                {answer.score}%
-                                              </Badge>
-                                            </div>
-                                            
-                                            <div className="text-xs space-y-2">
-                                              <div className="p-2 rounded bg-background/50 border border-red-200">
-                                                <span className="font-medium text-muted-foreground">Candidate's Answer:</span>
-                                                <p className="mt-1 text-foreground">{candidateAnswer?.answer}</p>
-                                              </div>
-                                              
-                                              {answer.improvements && (
-                                                <div className="flex items-start gap-2 p-2 rounded bg-red-100/50 dark:bg-red-900/20">
-                                                  <XCircle className="h-3 w-3 mt-0.5 flex-shrink-0 text-red-600" />
-                                                  <p className="text-red-700 dark:text-red-400">
-                                                    <strong>What went wrong:</strong> {answer.improvements}
-                                                  </p>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          )}
+                          <div className="w-full bg-destructive/20 rounded-full h-2 mb-3">
+                            <div
+                              className="bg-destructive h-2 rounded-full"
+                              style={{ width: `${activity.interview_score || 0}%` }}
+                            />
+                          </div>
+
+                          {/* Activity Details */}
+                          <div className="text-sm text-muted-foreground">
+                            <p><strong>Stage:</strong> {activity.new_stage_label}</p>
+                            <p><strong>Score:</strong> {activity.interview_score}%</p>
+                            <p><strong>Changed by:</strong> {activity.changed_by_name}</p>
+                          </div>
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Passed AI Interviews */}
+            {/* Passed Candidates */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-primary" />
-                  Passed Interviews (Score ≥ 10%)
+                  <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+                    <span className="text-xs text-primary-foreground">✓</span>
+                  </div>
+                  Passed Interviews (Score ≥ 50%)
                 </CardTitle>
                 <CardDescription>
-                  {passedInterviews.length} candidate{passedInterviews.length !== 1 ? 's' : ''} passed the interview
+                  {passedActivities.length} candidate{passedActivities.length !== 1 ? 's' : ''} passed the interview
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -455,196 +234,83 @@ const ActivityLog = () => {
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
-                ) : passedInterviews.length === 0 ? (
+                ) : passedActivities.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     No passed interviews yet.
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {passedInterviews.map((interview) => {
-                      const isExpanded = expandedInterviews.has(interview.id);
-                      const evaluation = interview.evaluation || {};
-                      
-                      return (
-                        <div
-                          key={interview.id}
-                          className="rounded-lg border bg-card overflow-hidden"
-                        >
-                          <div className="p-4">
-                            <div className="flex items-start justify-between gap-4 mb-3">
-                              <div className="flex-1">
-                                <h4 
-                                  className="font-semibold text-foreground flex items-center gap-2 cursor-pointer hover:text-primary transition-colors"
-                                  onClick={() => openInterviewDetails(interview)}
+                    {passedActivities.map((activity) => (
+                      <div
+                        key={activity.id}
+                        className="rounded-lg border bg-card overflow-hidden"
+                      >
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-foreground flex items-center gap-2">
+                                {activity.candidate_name}
+                                <Badge
+                                  variant={activity.interview_score >= 70 ? "default" : "secondary"}
+                                  className="text-xs"
                                 >
-                                  {interview.candidate_name}
-                                  <Badge 
-                                    variant={interview.score >= 70 ? "default" : interview.score >= 50 ? "secondary" : "destructive"}
-                                    className="text-xs"
-                                  >
-                                    {interview.score}%
-                                  </Badge>
-                                </h4>
-                                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                                  <Briefcase className="h-3 w-3" />
-                                  {interview.job_position}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {interview.candidate_email}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {formatDistanceToNow(new Date(interview.completed_at), {
-                                    addSuffix: true,
-                                  })}
-                                </span>
-                              </div>
+                                  {activity.interview_score}%
+                                </Badge>
+                              </h4>
+                              <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                                <Briefcase className="h-3 w-3" />
+                                {activity.job_position}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {activity.candidate_email}
+                              </p>
                             </div>
-
-                            <Progress value={interview.score} className="mb-3" />
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleInterview(interview.id)}
-                              className="w-full justify-between"
-                            >
-                              <span>View Details</span>
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                            </Button>
+                            <div className="text-right">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {formatDistanceToNow(new Date(activity.created_at), {
+                                  addSuffix: true,
+                                })}
+                              </span>
+                            </div>
                           </div>
 
-                          {isExpanded && (
-                            <div className="border-t bg-muted/50 p-4 space-y-4">
-                              {/* Candidate Profile */}
-                              <div>
-                                <h5 className="font-semibold text-sm mb-2">Candidate Profile</h5>
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">Name:</span>
-                                    <span className="ml-2 font-medium">{interview.candidate_name}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Position:</span>
-                                    <span className="ml-2 font-medium">{interview.job_position}</span>
-                                  </div>
-                                  <div className="col-span-2">
-                                    <span className="text-muted-foreground">Email:</span>
-                                    <span className="ml-2 font-medium">{interview.candidate_email}</span>
-                                  </div>
-                                </div>
+                          <div className="w-full bg-primary/20 rounded-full h-2 mb-3">
+                            <div
+                              className="bg-primary h-2 rounded-full"
+                              style={{ width: `${activity.interview_score || 0}%` }}
+                            />
+                          </div>
+
+                          {/* Activity Details */}
+                          <div className="text-sm text-muted-foreground">
+                            <p><strong>Stage:</strong> {activity.new_stage_label}</p>
+                            <p><strong>Score:</strong> {activity.interview_score}%</p>
+                            <p><strong>Changed by:</strong> {activity.changed_by_name}</p>
+                          </div>
+
+                          {/* Video Recording */}
+                          {activity.has_video && (
+                            <div className="mt-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Video className="h-4 w-4 text-primary" />
+                                <span className="text-sm font-medium">Interview Recording</span>
+                                {activity.video_size && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {(activity.video_size / 1024 / 1024).toFixed(2)} MB
+                                  </Badge>
+                                )}
                               </div>
-
-                              {/* Video Recording */}
-                              {interview.video_url && (
-                                <div>
-                                  <h5 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                                    <Video className="h-4 w-4" />
-                                    Interview Recording
-                                  </h5>
-                                  <video
-                                    src={interview.video_url}
-                                    controls
-                                    className="w-full rounded-lg bg-black max-h-60"
-                                  />
-                                </div>
-                              )}
-
-                              {/* Questions & Answers with Validation */}
-                              <div>
-                                <h5 className="font-semibold text-sm mb-3">Questions & Answers</h5>
-                                <div className="space-y-3">
-                                  {evaluation.answerEvaluations?.map((answer: any, idx: number) => {
-                                    const question = interview.questions[answer.questionIndex];
-                                    const candidateAnswer = interview.answers[answer.questionIndex];
-                                    const isCorrect = answer.score >= 70;
-                                    
-                                    return (
-                                      <div
-                                        key={idx}
-                                        className={`p-3 rounded-lg border-2 ${
-                                          isCorrect 
-                                            ? 'border-green-200 bg-green-50/50 dark:bg-green-950/10' 
-                                            : 'border-red-200 bg-red-50/50 dark:bg-red-950/10'
-                                        }`}
-                                      >
-                                        <div className="flex items-start gap-3 mb-2">
-                                          {/* Validation Icon */}
-                                          <div className={`flex-shrink-0 mt-0.5 p-1 rounded-full ${
-                                            isCorrect ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'
-                                          }`}>
-                                            {isCorrect ? (
-                                              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                                            ) : (
-                                              <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                                            )}
-                                          </div>
-                                          
-                                          {/* Question and Score */}
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-start justify-between gap-2 mb-2">
-                                              <h6 className="font-semibold text-sm flex items-center gap-2">
-                                                <span className={isCorrect ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}>
-                                                  Q{answer.questionIndex + 1}.
-                                                </span>
-                                                <span>{question?.question}</span>
-                                              </h6>
-                                              <Badge 
-                                                variant={isCorrect ? "default" : "destructive"}
-                                                className="flex-shrink-0"
-                                              >
-                                                {answer.score}%
-                                              </Badge>
-                                            </div>
-                                            
-                                            {/* Answer Section */}
-                                            <div className="text-xs space-y-2">
-                                              <div className="p-2 rounded bg-background/50 border">
-                                                <span className="font-medium text-muted-foreground">Answer:</span>
-                                                <p className="mt-1 text-foreground">{candidateAnswer?.answer}</p>
-                                              </div>
-                                              
-                                              {/* Feedback */}
-                                              {answer.feedback && (
-                                                <div className="flex items-start gap-2 text-green-700 dark:text-green-400">
-                                                  <CheckCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                                                  <p><strong>Good:</strong> {answer.feedback}</p>
-                                                </div>
-                                              )}
-                                              
-                                              {/* Improvements */}
-                                              {answer.improvements && (
-                                                <div className="flex items-start gap-2 text-red-700 dark:text-red-400">
-                                                  <XCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                                                  <p><strong>Improve:</strong> {answer.improvements}</p>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {/* Overall Assessment */}
-                              {evaluation.summary && (
-                                <div>
-                                  <h5 className="font-semibold text-sm mb-2">Overall Assessment</h5>
-                                  <p className="text-sm text-muted-foreground">{evaluation.summary}</p>
-                                </div>
-                              )}
+                              <video
+                                src={`http://localhost:3002/activity-logs/${activity.id}/video`}
+                                controls
+                                className="w-full rounded-lg bg-black max-h-48"
+                                preload="metadata"
+                              />
                             </div>
                           )}
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
@@ -658,10 +324,10 @@ const ActivityLog = () => {
                   Pipeline Stage Changes
                 </CardTitle>
                 <CardDescription>
-                  {(filteredActivities.length || activities?.length || 0)} stage transitions recorded
+                  {(activityLogs?.length || 0)} stage transitions recorded
                   {emailFilter && (
                     <span className="ml-2 text-sm">
-                      (filtered from {activities?.length || 0} total)
+                      (filtered from {activityLogs?.length || 0} total)
                     </span>
                   )}
                 </CardDescription>
@@ -671,17 +337,13 @@ const ActivityLog = () => {
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
-                ) : !activities || activities.length === 0 ? (
+                ) : !activityLogs || activityLogs.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     No activity recorded yet. Stage changes will appear here.
                   </div>
-                ) : filteredActivities.length === 0 && emailFilter ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No activities match your search criteria.
-                  </div>
                 ) : (
                   <div className="space-y-4">
-                    {(emailFilter || stageFilter ? filteredActivities : activities)?.map((activity) => (
+                    {activityLogs?.map((activity) => (
                       <div
                         key={activity.id}
                         className="flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
@@ -767,24 +429,11 @@ const ActivityLog = () => {
                             </div>
                           )}
 
-                          {/* Video Playback for MongoDB stored videos */}
+                          {/* Simple video indicator */}
                           {activity.has_video && (
-                            <div className="mt-3">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Video className="h-4 w-4 text-primary" />
-                                <span className="text-sm font-medium">Interview Recording</span>
-                                {activity.video_size && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {(activity.video_size / 1024 / 1024).toFixed(2)} MB
-                                  </Badge>
-                                )}
-                              </div>
-                              <video
-                                src={`http://localhost:3002/activity-logs/${activity.id}/video`}
-                                controls
-                                className="w-full rounded-lg bg-black max-h-48"
-                                preload="metadata"
-                              />
+                            <div className="flex items-center gap-2 mt-2">
+                              <Video className="h-3 w-3 text-primary" />
+                              <span className="text-xs text-muted-foreground">Video recorded</span>
                             </div>
                           )}
 
@@ -802,12 +451,6 @@ const ActivityLog = () => {
           </div>
         </main>
       </div>
-
-      <InterviewDetailsModal
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        interview={selectedInterview}
-      />
     </div>
   );
 };

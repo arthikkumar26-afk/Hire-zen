@@ -48,8 +48,36 @@ const WrittenTest = () => {
     },
   });
 
-  const openInterviewDetails = (interview: InterviewResult) => {
-    setSelectedInterview(interview);
+  const openInterviewDetails = async (interview: InterviewResult) => {
+    // For MongoDB data, we need to fetch the detailed interview data
+    if (!interview.questions || !interview.answers || !interview.evaluation) {
+      try {
+        // Fetch detailed data from MongoDB if not available
+        const response = await fetch(`http://localhost:3002/interview-results/${interview.id}`);
+        if (response.ok) {
+          const detailedData = await response.json();
+          if (detailedData.success) {
+            setSelectedInterview({
+              ...interview,
+              ...detailedData.data,
+              // Ensure we have the right field names
+              questions: detailedData.data.questions || interview.questions || [],
+              answers: detailedData.data.answers || interview.answers || [],
+              evaluation: detailedData.data.evaluation || interview.evaluation || {}
+            });
+          } else {
+            setSelectedInterview(interview);
+          }
+        } else {
+          setSelectedInterview(interview);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch detailed interview data:', error);
+        setSelectedInterview(interview);
+      }
+    } else {
+      setSelectedInterview(interview);
+    }
     setIsModalOpen(true);
   };
 

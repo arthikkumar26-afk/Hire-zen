@@ -13,21 +13,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 
 interface InterviewDetailsModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  interview: {
-    id?: string;
-    candidate_name: string;
-    candidate_email: string;
-    job_position: string;
-    score: number;
-    video_url: string | null;
-    questions: any[];
-    answers: any[];
-    evaluation: any;
-    video_analysis?: any;
-  } | null;
-}
+   open: boolean;
+   onOpenChange: (open: boolean) => void;
+   interview: {
+     id?: string;
+     candidate_name: string;
+     candidate_email: string;
+     job_position: string;
+     score: number;
+     video_url?: string | null;
+     has_video?: boolean;
+     questions: any[];
+     answers: any[];
+     evaluation: any;
+     video_analysis?: any;
+     mcq_score?: number;
+     essay_score?: number;
+     total_questions?: number;
+     video_recorded?: boolean;
+     _id?: string; // MongoDB ObjectId
+   } | null;
+ }
 
 const InterviewDetailsModal = ({ open, onOpenChange, interview }: InterviewDetailsModalProps) => {
   const { toast } = useToast();
@@ -381,7 +387,7 @@ const InterviewDetailsModal = ({ open, onOpenChange, interview }: InterviewDetai
             </Card>
 
             {/* Interview Recording */}
-            {interview.video_url && (
+            {(interview.video_url || interview.has_video) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -390,11 +396,23 @@ const InterviewDetailsModal = ({ open, onOpenChange, interview }: InterviewDetai
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <video
-                    src={interview.video_url}
-                    controls
-                    className="w-full rounded-lg bg-black"
-                  />
+                  {interview.video_url ? (
+                    <video
+                      src={interview.video_url}
+                      controls
+                      className="w-full rounded-lg bg-black"
+                    />
+                  ) : interview.has_video ? (
+                    <video
+                      src={`http://localhost:3002/activity-logs/${interview.id || interview._id}/video`}
+                      controls
+                      className="w-full rounded-lg bg-black"
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Video file is stored but cannot be displayed at this time.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

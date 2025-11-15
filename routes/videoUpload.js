@@ -11,9 +11,9 @@ let gfsBucket;
 let storage;
 let upload;
 
-export function initializeGridFS(connection) {
+export function initializeGridFS(db) {
   // Create GridFS bucket for videos
-  gfsBucket = new GridFSBucket(connection.db, {
+  gfsBucket = new GridFSBucket(db, {
     bucketName: 'videos'
   });
 
