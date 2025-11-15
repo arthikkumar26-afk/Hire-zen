@@ -83,6 +83,8 @@ const App = () => (
         <Route path="/ai-interview-results/:token" element={<AIInterviewResults />} />
         <Route path="/interview-quiz/:jobId" element={<InterviewQuiz />} />
         <Route path="/interview-quiz/:jobId/:candidateId" element={<InterviewQuiz />} />
+        <Route path="/quiz/:jobId" element={<InterviewQuiz />} />
+        <Route path="/quiz/:jobId/:candidateId" element={<InterviewQuiz />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

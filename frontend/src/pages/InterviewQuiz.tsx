@@ -443,9 +443,18 @@ const InterviewQuiz = () => {
       setIsPaused(false);
       setRecordingTime(0);
 
-      // Create MediaRecorder with MIME type 'video/webm;codecs=vp9,opus'
+      // Create MediaRecorder with MIME type - try VP9+Opus first, fallback to VP8+Opus, then webm
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+        }
+      }
+      console.log('🎬 Using MIME type:', mimeType);
+
       const mediaRecorder = new MediaRecorder(combinedStreamRef.current, {
-        mimeType: 'video/webm;codecs=vp9,opus'
+        mimeType: mimeType
       });
 
       // Attach ondataavailable before calling start()
@@ -453,6 +462,11 @@ const InterviewQuiz = () => {
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
           console.log('📊 Chunk received:', event.data.size, 'bytes (total chunks:', recordedChunksRef.current.length, ')');
+        } else if (event.data) {
+          // Handle zero-size chunks (end of recording)
+          console.log('📊 End chunk received (size 0)');
+        } else {
+          console.warn('📊 Empty event.data received');
         }
       };
 
@@ -466,17 +480,24 @@ const InterviewQuiz = () => {
           recordingIntervalRef.current = null;
         }
 
-        // Combine chunks into Blob
+        // Combine chunks into Blob - use the same MIME type as the recorder
         if (recordedChunksRef.current.length > 0) {
-          const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+          const blob = new Blob(recordedChunksRef.current, { type: mediaRecorder.mimeType || 'video/webm' });
           setRecordedBlob(blob);
 
           // Generate downloadable URL
           const videoUrl = URL.createObjectURL(blob);
           setRecordedVideoUrl(videoUrl);
 
-          console.log('✅ Recording saved - Blob size:', blob.size, 'bytes');
+          console.log('✅ Recording saved - Blob size:', blob.size, 'bytes, MIME type:', blob.type);
           console.log('🔗 Video URL generated:', videoUrl);
+
+          // Validate blob is playable
+          if (blob.size === 0) {
+            console.error('❌ Recorded blob is empty!');
+            setRecordingError("Recording failed - no data captured. Please try again.");
+            return;
+          }
 
           // Auto-upload to server for analysis
           uploadVideoToServer();
