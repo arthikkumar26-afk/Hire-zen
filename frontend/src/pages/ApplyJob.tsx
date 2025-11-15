@@ -262,7 +262,8 @@ const ApplyJob = () => {
       // Send confirmation email via local Node.js server
       try {
         console.log('Sending email via local server to:', email);
-        const interviewLink = `${window.location.origin}/interview-quiz/${jobId}/${candidateData.candidate?.id || candidateData.id}`;
+        const frontendUrl = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
+        const interviewLink = `${frontendUrl}/interview-quiz/${jobId}/${candidateData.candidate?.id || candidateData.id}`;
 
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
         const emailResponse = await fetch(`${apiBaseUrl}/send-email`, {
