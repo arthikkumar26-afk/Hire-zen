@@ -24,12 +24,20 @@ async function connectMongoDB() {
   try {
     if (mongoClient) return mongoClient.db(DB_NAME);
 
+    console.log('🔌 Connecting to MongoDB Atlas...');
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
-    console.log('✅ MongoDB connected successfully!');
+    console.log('✅ MongoDB Atlas connected successfully!');
+    console.log('📊 Database: hirezen');
+
+    // Test the connection by listing collections
+    const collections = await mongoClient.db(DB_NAME).collections();
+    console.log(`📋 Available collections: ${collections.map(c => c.collectionName).join(', ')}`);
+
     return mongoClient.db(DB_NAME);
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
+    console.error('❌ MongoDB Atlas connection error:', error.message);
+    console.error('🔍 Connection string:', MONGODB_URI.replace(/:([^:@]{4})[^:@]*@/, ':$1****@')); // Hide password
     return null;
   }
 }
@@ -37,8 +45,16 @@ async function connectMongoDB() {
 // Interview results endpoints
 app.post('/interview-results', async (req, res) => {
   try {
+    console.log('📥 Received interview results request:', {
+      candidate_email: req.body.candidate_email,
+      candidate_name: req.body.candidate_name,
+      interview_score: req.body.interview_score,
+      has_video: !!req.body.video_data
+    });
+
     const db = await connectMongoDB();
     if (!db) {
+      console.error('❌ MongoDB connection failed');
       return res.status(500).json({ success: false, error: 'Database connection failed' });
     }
 
@@ -51,9 +67,20 @@ app.post('/interview-results', async (req, res) => {
       status: 'completed'
     };
 
+    // Remove video data from the main document but keep metadata
+    const videoData = interviewData.video_data;
+    const videoMimeType = interviewData.video_mime_type;
+    delete interviewData.video_data; // Don't store in main document
+    delete interviewData.video_mime_type;
+
     const result = await collection.insertOne(interviewData);
     console.log('✅ Interview results saved to MongoDB:', result.insertedId);
     console.log('📊 Saved data for candidate:', req.body.candidate_email, 'Score:', req.body.interview_score);
+
+    // If video data exists, store it separately (optional)
+    if (videoData && videoMimeType) {
+      console.log('🎥 Video data provided but not storing in database (as requested)');
+    }
 
     res.json({
       success: true,
@@ -591,15 +618,34 @@ app.get('/video-analysis', (req, res) => {
 });
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'HireZen Email Server (Simplified Mode)',
-    mode: 'simplified',
-    videoStorage: 'disabled',
-    database: 'none',
-    timestamp: new Date().toISOString()
-  });
+app.get('/health', async (req, res) => {
+  try {
+    const db = await connectMongoDB();
+    const dbStatus = db ? 'connected' : 'disconnected';
+
+    // Test database operations
+    let collections = [];
+    if (db) {
+      collections = await db.collections();
+    }
+
+    res.json({
+      status: 'OK',
+      message: 'HireZen Backend Server (MongoDB Atlas)',
+      mode: 'production',
+      database: dbStatus,
+      collections: collections.map(c => c.collectionName),
+      mongodb_uri: MONGODB_URI ? 'configured' : 'missing',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: 'Health check failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Initialize server with MongoDB connection
