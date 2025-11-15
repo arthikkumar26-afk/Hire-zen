@@ -38,6 +38,8 @@ const InterviewQuiz = () => {
   const [analyzingEssays, setAnalyzingEssays] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showSubmitConfirmation, setShowSubmitConfirmation] = useState(false);
+   const [submitStep, setSubmitStep] = useState<'video' | 'interview' | 'completed'>('video');
 
   // Add LOVABLE_API_KEY check to prevent errors
   const LOVABLE_API_KEY = import.meta.env.VITE_LOVABLE_API_KEY;
@@ -1531,8 +1533,133 @@ const InterviewQuiz = () => {
     );
   }
 
+  // Submit Confirmation Modal - Step-by-step submission
+  const handleVideoSubmit = async () => {
+    if (isRecording) {
+      stopRecording();
+      setSubmitStep('interview');
+      toast({
+        title: "Video recording stopped",
+        description: "Now submitting your interview answers...",
+      });
+    } else {
+      setSubmitStep('interview');
+    }
+  };
+
+  const handleInterviewSubmit = async () => {
+    setSubmitStep('completed');
+    // Small delay to ensure UI updates
+    setTimeout(() => {
+      handleSubmit();
+    }, 500);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 py-12">
+      {/* Submit Confirmation Modal */}
+      {showSubmitConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-center">Submit Interview</CardTitle>
+              <p className="text-center text-muted-foreground">
+                {submitStep === 'video' ? 'Stop video recording first' : submitStep === 'interview' ? 'Now submit your answers' : 'Completing submission...'}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {submitStep === 'video' && (
+                <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <h4 className="font-semibold text-red-800 dark:text-red-200 mb-2">Step 1: Stop Video Recording</h4>
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    Currently recording for {formatTime(recordingTime)}. Click below to stop recording and proceed to submit answers.
+                  </p>
+                </div>
+              )}
+
+              {submitStep === 'interview' && (
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Step 2: Submit Answers</h4>
+                  <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• Your answers will be evaluated by AI</li>
+                    <li>• Results will be saved and emailed</li>
+                    <li>• HR team will review your submission</li>
+                  </ul>
+                </div>
+              )}
+
+              {submitStep === 'completed' && (
+                <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <div className="flex items-center justify-center">
+                    <CheckCircle className="h-8 w-8 text-green-600 mr-2" />
+                    <span className="font-semibold text-green-800 dark:text-green-200">Submission Complete!</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-end">
+                {submitStep === 'video' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowSubmitConfirmation(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleVideoSubmit}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      <Square className="h-4 w-4 mr-2" />
+                      Stop Recording
+                    </Button>
+                  </>
+                )}
+
+                {submitStep === 'interview' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowSubmitConfirmation(false)}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleInterviewSubmit}
+                      disabled={isSubmitting}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Submit Answers
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
+
+                {submitStep === 'completed' && (
+                  <Button
+                    onClick={() => setShowSubmitConfirmation(false)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Done
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="w-[90vw] mx-auto px-4">
         <Card className="mb-6">
           <CardHeader>
@@ -1668,7 +1795,7 @@ const InterviewQuiz = () => {
               </Button>
             ) : currentPhase === 'essay' && currentQuestionIndex === essayQuestions.length - 1 ? (
               <Button
-                onClick={handleSubmit}
+                onClick={() => setShowSubmitConfirmation(true)}
                 disabled={Object.keys(essayAnswers).filter(idx => (essayAnswers[parseInt(idx)] || '').trim().length >= 50).length !== essayQuestions.length || isSubmitting}
               >
                 {isSubmitting ? "Submitting..." : "Submit Interview"}
