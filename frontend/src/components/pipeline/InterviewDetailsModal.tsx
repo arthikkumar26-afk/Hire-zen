@@ -404,7 +404,7 @@ const InterviewDetailsModal = ({ open, onOpenChange, interview }: InterviewDetai
                     />
                   ) : interview.has_video ? (
                     <video
-                      src={`http://localhost:3002/activity-logs/${interview.id || interview._id}/video`}
+                      src={`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/activity-logs/${interview.id || interview._id}/video`}
                       controls
                       className="w-full rounded-lg bg-black"
                     />

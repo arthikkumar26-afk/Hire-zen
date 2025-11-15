@@ -264,7 +264,8 @@ const ApplyJob = () => {
         console.log('Sending email via local server to:', email);
         const interviewLink = `${window.location.origin}/interview-quiz/${jobId}/${candidateData.candidate?.id || candidateData.id}`;
 
-        const emailResponse = await fetch('http://localhost:3002/send-email', {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+        const emailResponse = await fetch(`${apiBaseUrl}/send-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

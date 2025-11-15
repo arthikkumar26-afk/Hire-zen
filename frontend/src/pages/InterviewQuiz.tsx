@@ -544,7 +544,8 @@ const InterviewQuiz = () => {
       formData.append('jobId', jobId || 'unknown_job');
       formData.append('jobPosition', job?.position || 'Unknown Position');
 
-      const response = await fetch('http://localhost:3002/api/upload', {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+      const response = await fetch(`${apiBaseUrl}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -558,7 +559,7 @@ const InterviewQuiz = () => {
 
       // Store the filename and URL for preview
       const videoFilename = result.filename;
-      const previewUrl = `http://localhost:3002/api/video/${videoFilename}`;
+      const previewUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/api/video/${videoFilename}`;
 
       setUploadedVideoFilename(videoFilename);
       setUploadedVideoUrl(previewUrl);
@@ -968,7 +969,8 @@ const InterviewQuiz = () => {
               video_recorded: !!videoUrl
             };
 
-            const mongoResponse = await fetch('http://localhost:3002/interview-results', {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+            const mongoResponse = await fetch(`${apiBaseUrl}/interview-results`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1027,7 +1029,8 @@ const InterviewQuiz = () => {
           };
 
           try {
-            const activityResponse = await fetch('http://localhost:3002/activity-logs', {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+            const activityResponse = await fetch(`${apiBaseUrl}/activity-logs`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1135,7 +1138,8 @@ const InterviewQuiz = () => {
         };
 
         try {
-          const publicActivityResponse = await fetch('http://localhost:3002/activity-logs', {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+          const publicActivityResponse = await fetch(`${apiBaseUrl}/activity-logs`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1182,7 +1186,8 @@ const InterviewQuiz = () => {
         };
 
         try {
-          const publicInterviewResponse = await fetch('http://localhost:3002/interview-results', {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+          const publicInterviewResponse = await fetch(`${apiBaseUrl}/interview-results`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

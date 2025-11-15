@@ -60,7 +60,8 @@ export const PipelineVisualization = () => {
       // Fetch all interview results from MongoDB at once
       let allInterviewResults: any[] = [];
       try {
-        const response = await fetch(`http://localhost:3002/interview-results`);
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+        const response = await fetch(`${apiBaseUrl}/interview-results`);
         if (response.ok) {
           const result = await response.json();
           if (result.success) {

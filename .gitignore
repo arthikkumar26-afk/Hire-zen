@@ -41,6 +41,9 @@ build/
 *.swo
 *~
 
+# Frontend data files (only ignore generated/transpiled files)
+# Keep source data files like locationData.ts
+
 # OS generated files
 .DS_Store
 .DS_Store?

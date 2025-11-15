@@ -38,7 +38,8 @@ const WrittenTest = () => {
   const { data: interviewResults, isLoading: interviewsLoading } = useQuery({
     queryKey: ["written-test-interview-results"],
     queryFn: async () => {
-      const response = await fetch(`http://localhost:3002/interview-results`);
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+      const response = await fetch(`${apiBaseUrl}/interview-results`);
       if (!response.ok) throw new Error('Failed to fetch interview results');
       const result = await response.json();
       if (result.success) {
@@ -53,7 +54,8 @@ const WrittenTest = () => {
     if (!interview.questions || !interview.answers || !interview.evaluation) {
       try {
         // Fetch detailed data from MongoDB if not available
-        const response = await fetch(`http://localhost:3002/interview-results/${interview.id}`);
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+        const response = await fetch(`${apiBaseUrl}/interview-results/${interview.id}`);
         if (response.ok) {
           const detailedData = await response.json();
           if (detailedData.success) {

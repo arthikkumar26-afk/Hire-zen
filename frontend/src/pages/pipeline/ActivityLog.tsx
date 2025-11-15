@@ -53,7 +53,8 @@ const ActivityLog = () => {
         queryParams.append(key, value);
       });
 
-      const response = await fetch(`http://localhost:3002/activity-logs?${queryParams.toString()}`);
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+      const response = await fetch(`${apiBaseUrl}/activity-logs?${queryParams.toString()}`);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -301,7 +302,7 @@ const ActivityLog = () => {
                                 )}
                               </div>
                               <video
-                                src={`http://localhost:3002/activity-logs/${activity.id}/video`}
+                                src={`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/activity-logs/${activity.id}/video`}
                                 controls
                                 className="w-full rounded-lg bg-black max-h-48"
                                 preload="metadata"
