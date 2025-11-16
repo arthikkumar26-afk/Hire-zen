@@ -61,7 +61,46 @@ const ActivityLog = () => {
       }
 
       const result = await response.json();
-      return result.success ? result.data : [];
+      const logs = result.success ? result.data : [];
+
+      // For each activity log with video, fetch the corresponding video metadata
+      // to get the proper video URL from interview_videos collection
+      for (let log of logs) {
+        if (log.video_file_id || log.video_url) {
+          try {
+            // If we have a video_file_id, fetch from interview_videos collection
+            if (log.video_file_id) {
+              const videoResponse = await fetch(`${apiBaseUrl}/interview-videos?gridfs_file_id=${log.video_file_id}`);
+              if (videoResponse.ok) {
+                const videoResult = await videoResponse.json();
+                if (videoResult.success && videoResult.data.length > 0) {
+                  const videoData = videoResult.data[0];
+                  log.video_url = videoData.video_url || log.video_url;
+                  log.video_size_mb = videoData.size_mb || log.video_size_mb;
+                  log.video_filename = videoData.filename || log.video_filename;
+                }
+              }
+            }
+            // Fallback: if we have interview_id, try to fetch video by interview_id
+            else if (log.interview_details?.candidate_id) {
+              const videoResponse = await fetch(`${apiBaseUrl}/interview-videos?interview_id=${log.interview_details.candidate_id}`);
+              if (videoResponse.ok) {
+                const videoResult = await videoResponse.json();
+                if (videoResult.success && videoResult.data.length > 0) {
+                  const videoData = videoResult.data[0];
+                  log.video_url = videoData.video_url;
+                  log.video_size_mb = videoData.size_mb;
+                  log.video_filename = videoData.filename;
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to fetch video metadata for activity log:', log.id, error);
+          }
+        }
+      }
+
+      return logs;
     },
   });
 
@@ -289,20 +328,20 @@ const ActivityLog = () => {
                             <p><strong>Changed by:</strong> {activity.changed_by_name}</p>
                           </div>
 
-                          {/* Video Recording */}
-                          {activity.has_video && (
+                          {/* Video Recording - Updated to use GridFS URLs */}
+                          {activity.video_url && (
                             <div className="mt-3">
                               <div className="flex items-center gap-2 mb-2">
                                 <Video className="h-4 w-4 text-primary" />
                                 <span className="text-sm font-medium">Interview Recording</span>
-                                {activity.video_size && (
+                                {(activity.video_size_mb || activity.video_size_bytes) && (
                                   <Badge variant="outline" className="text-xs">
-                                    {(activity.video_size / 1024 / 1024).toFixed(2)} MB
+                                    {activity.video_size_mb || (activity.video_size_bytes / 1024 / 1024).toFixed(2)} MB
                                   </Badge>
                                 )}
                               </div>
                               <video
-                                src={`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/activity-logs/${activity.id}/video`}
+                                src={activity.video_url}
                                 controls
                                 className="w-full rounded-lg bg-black max-h-48"
                                 preload="metadata"
