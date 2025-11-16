@@ -468,6 +468,15 @@ app.post('/upload-video', (req, res, next) => {
     console.log('📄 Request body keys:', Object.keys(req.body));
     console.log('📁 Files:', req.file ? 'present' : 'missing');
 
+    // Check if MongoDB and GridFS are initialized
+    if (!mongoClient || !gfsBucket) {
+      console.error('❌ MongoDB or GridFS not initialized');
+      return res.status(500).json({
+        success: false,
+        error: 'Database service not ready'
+      });
+    }
+
     if (!req.file) {
       console.log('❌ No file in request');
       return res.status(400).json({
@@ -482,6 +491,18 @@ app.post('/upload-video', (req, res, next) => {
       mimetype: req.file.mimetype,
       buffer: req.file.buffer?.length || 'no buffer'
     });
+
+    // Verify backend base URL is configured
+    const backendBaseUrl = process.env.BACKEND_BASE_URL;
+    if (!backendBaseUrl) {
+      console.error('❌ BACKEND_BASE_URL environment variable not set');
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error - BACKEND_BASE_URL not configured'
+      });
+    }
+
+    console.log('🔗 Using backend base URL:', backendBaseUrl);
 
     // Manually upload to GridFS since multer-gridfs-storage is problematic
     try {
@@ -523,8 +544,6 @@ app.post('/upload-video', (req, res, next) => {
       }
 
       console.log('✅ File verified in GridFS:', files[0]._id.toString());
-
-      const backendBaseUrl = process.env.BACKEND_BASE_URL || 'https://hirezen-u5gy.onrender.com';
 
       res.json({
         success: true,
