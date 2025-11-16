@@ -923,11 +923,11 @@ const InterviewQuiz = () => {
             .single();
 
           if (candidateError) {
-            console.error('Error fetching candidate:', candidateError);
-            console.error('Candidate fetch error details:', candidateError.message, candidateError.details);
-          } else {
-            console.log('Candidate data fetched successfully:', candidateData);
+            console.warn('Candidate fetch failed, proceeding with limited data:', candidateError);
+            // Continue without candidate data - don't throw error
           }
+
+          // Candidate data handling moved above
 
           // Save comprehensive interview results to MongoDB - including candidate profile data
           try {
@@ -945,7 +945,8 @@ const InterviewQuiz = () => {
               .single();
 
             if (profileError) {
-              console.warn('Could not fetch detailed candidate profile:', profileError);
+              console.warn('Could not fetch detailed candidate profile, proceeding without it:', profileError);
+              // Continue without profile data - don't throw error
             }
 
             const comprehensiveInterviewData = {
@@ -1141,28 +1142,14 @@ const InterviewQuiz = () => {
                 .eq('id', candidateId);
 
               if (updateError) {
-                console.error('Error updating candidate status:', updateError);
+                console.warn('Supabase update failed, skipping status update:', updateError);
+                // Don't throw error, continue with submission
               } else {
                 console.log('Candidate status updated to Demo Round successfully');
-                // Trigger real-time update for pipeline components
-                await supabase
-                  .from('pipeline_activity_logs')
-                  .insert({
-                    candidate_id: candidateId,
-                    candidate_name: candidateData.full_name,
-                    candidate_email: candidateData.email,
-                    job_id: jobId || null,
-                    job_position: job?.position || 'Unknown Position',
-                    old_stage: 'hr',
-                    new_stage: 'written_test',
-                    old_stage_label: 'Screening Test',
-                    new_stage_label: 'Demo Round',
-                    changed_by_name: 'Interview System',
-                    created_at: new Date().toISOString()
-                  });
               }
             } catch (statusUpdateError) {
-              console.error('Status update error:', statusUpdateError);
+              console.warn('Status update failed, continuing:', statusUpdateError);
+              // Don't throw error, continue with submission
             }
           }
 
