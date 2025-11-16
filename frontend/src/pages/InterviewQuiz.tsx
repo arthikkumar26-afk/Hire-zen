@@ -637,33 +637,14 @@ const InterviewQuiz = () => {
       setUploadedVideoFilename(videoFilename);
       setUploadedVideoUrl(previewUrl);
 
-      // Update activity log with video metadata
-      const activityLogId = sessionId; // Use sessionId as activity log ID
-      const attachResponse = await fetch(`${apiBaseUrl}/activity-logs/${activityLogId}/attach-video`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileId: result.fileId,
-          fileUrl: previewUrl,
-          mimeType: result.mimeType,
-          size: result.size
-        }),
-      });
-
-      if (attachResponse.ok) {
-        console.log('✅ Video metadata attached to activity log');
-      } else {
-        console.warn('⚠️ Failed to attach video metadata to activity log');
-      }
-
       toast({
         title: "Video uploaded",
         description: `Video stored in MongoDB GridFS. File ID: ${result.fileId}`,
       });
 
-      return { filename: videoFilename, url: previewUrl };
+      // Return the upload result - don't try to attach to activity log here
+      // Activity log attachment will happen in handleSubmit after the log is created
+      return { filename: videoFilename, url: previewUrl, fileId: result.fileId, mimeType: result.mimeType, size: result.size };
 
     } catch (error) {
       console.error('❌ Error uploading video to GridFS:', error);
@@ -895,11 +876,12 @@ const InterviewQuiz = () => {
 
       // Upload video to GridFS and get real URL
       let videoUrl = null;
+      let videoUploadResult = null;
       if (recordedBlob && recordedBlob.size > 0) {
         try {
           console.log('🎬 Uploading video to GridFS...');
-          await uploadVideoToServer();
-          videoUrl = uploadedVideoUrl; // This will be set by uploadVideoToServer
+          videoUploadResult = await uploadVideoToServer();
+          videoUrl = videoUploadResult?.url || null; // Get the URL from upload result
           console.log('✅ Video uploaded, URL:', videoUrl);
         } catch (uploadError) {
           console.error('❌ Video upload failed:', uploadError);
@@ -1091,16 +1073,19 @@ const InterviewQuiz = () => {
             created_at: new Date().toISOString(),
             interview_score: finalScoreBounded,
             video_url: videoUrl,
-            // Include video blob data for storage in MongoDB activity_logs collection
-            video_blob: recordedBlob ? await recordedBlob.arrayBuffer() : null,
-            video_mime_type: recordedBlob ? recordedBlob.type : null,
-            video_size_mb: recordedBlob ? (recordedBlob.size / 1024 / 1024).toFixed(2) : null,
+            // Include video metadata from GridFS upload
+            video_file_id: videoUploadResult?.fileId || null,
+            video_filename: videoUploadResult?.filename || null,
+            video_mime_type: videoUploadResult?.mimeType || null,
+            video_size_bytes: videoUploadResult?.size || null,
+            video_size_mb: videoUploadResult?.size ? (videoUploadResult.size / 1024 / 1024).toFixed(2) : null,
+            // Video is already stored in GridFS, no need for blob in activity log
             interview_details: {
               mcq_score: mcqPercentage,
               essay_score: essayPercentage,
               total_questions: mcqQuestions.length + essayQuestions.length,
               video_recorded: !!videoUrl,
-              video_stored_in_db: !!recordedBlob,
+              video_stored_in_gridfs: !!videoUploadResult,
               passed: finalScoreBounded >= 50
             }
           };
