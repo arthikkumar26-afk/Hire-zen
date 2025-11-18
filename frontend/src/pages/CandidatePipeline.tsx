@@ -260,8 +260,8 @@ const CandidatePipeline = () => {
               <div className="flex items-center gap-1">
                 <span className="text-muted-foreground">Recruitment Pipeline</span>
                 <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                <div className="flex items-center gap-2 flex-wrap">
-                  {PIPELINE_ROUTES.slice(0, 5).map((stage, index) => (
+                <div className="flex items-center gap-3 flex-wrap">
+                  {PIPELINE_ROUTES.map((stage, index) => (
                     <div key={stage.route} className="flex items-center gap-2">
                       <Button
                         variant="link"
@@ -271,38 +271,11 @@ const CandidatePipeline = () => {
                         <span className="mr-1">{stage.icon}</span>
                         {stage.label}
                       </Button>
-                      {index < PIPELINE_ROUTES.slice(0, 5).length - 1 && (
+                      {index < PIPELINE_ROUTES.length - 1 && (
                         <ChevronRight className="h-3 w-3 text-muted-foreground" />
                       )}
                     </div>
                   ))}
-                  {PIPELINE_ROUTES.length > 5 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="link"
-                          className="h-auto p-0 text-muted-foreground hover:text-foreground"
-                        >
-                          More...
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="start"
-                        className="w-56 bg-popover z-50"
-                      >
-                        {PIPELINE_ROUTES.slice(5).map((stage) => (
-                          <DropdownMenuItem
-                            key={stage.route}
-                            onClick={() => navigate(stage.route)}
-                            className="cursor-pointer"
-                          >
-                            <span className="mr-2">{stage.icon}</span>
-                            {stage.label}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
                 </div>
               </div>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
