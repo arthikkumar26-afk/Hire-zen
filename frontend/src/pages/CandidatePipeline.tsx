@@ -257,32 +257,54 @@ const CandidatePipeline = () => {
           {/* Breadcrumb Navigation */}
           <div className="border-b border-border bg-card/50 px-8 py-3">
             <nav className="flex items-center gap-2 text-sm">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="link"
-                    className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
-                  >
-                    Recruitment Pipeline
-                    <ChevronRight className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent 
-                  align="start" 
-                  className="w-56 bg-popover z-50"
-                >
-                  {PIPELINE_ROUTES.map((stage) => (
-                    <DropdownMenuItem
-                      key={stage.route}
-                      onClick={() => navigate(stage.route)}
-                      className="cursor-pointer"
-                    >
-                      <span className="mr-2">{stage.icon}</span>
-                      {stage.label}
-                    </DropdownMenuItem>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Recruitment Pipeline</span>
+                <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                <div className="flex items-center gap-2 flex-wrap">
+                  {PIPELINE_ROUTES.slice(0, 5).map((stage, index) => (
+                    <div key={stage.route} className="flex items-center gap-2">
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => navigate(stage.route)}
+                      >
+                        <span className="mr-1">{stage.icon}</span>
+                        {stage.label}
+                      </Button>
+                      {index < PIPELINE_ROUTES.slice(0, 5).length - 1 && (
+                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                      )}
+                    </div>
                   ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  {PIPELINE_ROUTES.length > 5 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-muted-foreground hover:text-foreground"
+                        >
+                          More...
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        className="w-56 bg-popover z-50"
+                      >
+                        {PIPELINE_ROUTES.slice(5).map((stage) => (
+                          <DropdownMenuItem
+                            key={stage.route}
+                            onClick={() => navigate(stage.route)}
+                            className="cursor-pointer"
+                          >
+                            <span className="mr-2">{stage.icon}</span>
+                            {stage.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
               <span className="text-foreground font-medium">{candidate?.full_name}</span>
             </nav>
