@@ -1601,18 +1601,17 @@ const InterviewQuiz = () => {
     );
   }
 
-  // Submit Confirmation Modal - Step-by-step submission
+  // Submit Confirmation Modal - Automatic recording stop
   const handleVideoSubmit = async () => {
+    // Automatically stop recording if still active
     if (isRecording) {
       stopRecording();
-      setSubmitStep('interview');
       toast({
         title: "Video recording stopped",
         description: "Now submitting your interview answers...",
       });
-    } else {
-      setSubmitStep('interview');
     }
+    setSubmitStep('interview');
   };
 
   const handleInterviewSubmit = async () => {
@@ -1637,10 +1636,10 @@ const InterviewQuiz = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               {submitStep === 'video' && (
-                <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                  <h4 className="font-semibold text-red-800 dark:text-red-200 mb-2">Step 1: Stop Video Recording</h4>
-                  <p className="text-sm text-red-700 dark:text-red-300">
-                    Currently recording for {formatTime(recordingTime)}. Click below to stop recording and proceed to submit answers.
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Video Recording Complete</h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Recorded for {formatTime(recordingTime)}. Ready to submit your answers.
                   </p>
                 </div>
               )}
@@ -1667,21 +1666,13 @@ const InterviewQuiz = () => {
 
               <div className="flex gap-3 justify-end">
                 {submitStep === 'video' && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowSubmitConfirmation(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleVideoSubmit}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      <Square className="h-4 w-4 mr-2" />
-                      Stop Recording
-                    </Button>
-                  </>
+                  <Button
+                    onClick={handleVideoSubmit}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Proceed to Submit
+                  </Button>
                 )}
 
                 {submitStep === 'interview' && (
