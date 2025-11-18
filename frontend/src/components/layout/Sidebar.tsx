@@ -182,9 +182,9 @@ const Sidebar = () => {
         {...sidebarSwipeHandlers}
         id="mobile-sidebar"
         className={cn(
-          "fixed left-0 top-16 z-50 h-[calc(100vh-4rem)] w-56 border-r bg-sidebar shadow-sm transition-transform duration-300 ease-in-out overflow-y-auto",
-          "lg:translate-x-0",
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed left-0 top-16 z-50 h-[calc(100vh-4rem)] w-56 border-r bg-sidebar shadow-sm transition-transform duration-300 ease-in-out",
+          "lg:translate-x-0 lg:overflow-y-auto",
+          isOpen ? "translate-x-0 overflow-visible" : "-translate-x-full"
         )}
       >
         {/* Close button for mobile */}
@@ -241,7 +241,7 @@ const Sidebar = () => {
                     <ChevronDown className={cn("h-4 w-4 transition-transform", (isExpanded || forceExpand) && "rotate-180")} />
                   </button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="pl-8 space-y-1 mt-1 max-h-[400px] overflow-y-auto">
+                <CollapsibleContent className="pl-8 space-y-1 mt-1">
                   {item.subItems.map((subItem) => (
                     <NavLink
                       key={subItem.path}
