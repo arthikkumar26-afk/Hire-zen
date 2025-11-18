@@ -1953,7 +1953,7 @@ const InterviewQuiz = () => {
                     {isRecording && (
                       <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm">
                         <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                        {isPaused ? 'PAUSED' : 'REC'}
+                        REC
                         <span className="ml-2">{formatTime(recordingTime)}</span>
                       </div>
                     )}
