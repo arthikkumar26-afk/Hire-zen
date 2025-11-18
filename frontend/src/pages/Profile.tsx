@@ -31,11 +31,6 @@ const Profile = () => {
   const [appliedJobs, setAppliedJobs] = useState<any[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
 
-  // AI Features
-  const [aiInsights, setAiInsights] = useState<any>(null);
-  const [loadingAI, setLoadingAI] = useState(false);
-  const [showAIInsights, setShowAIInsights] = useState(false);
-
   // Password change
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -48,7 +43,6 @@ const Profile = () => {
   useEffect(() => {
     if (email) {
       loadAppliedJobs();
-      loadAIInsights();
     }
   }, [email]);
 
@@ -256,34 +250,6 @@ const Profile = () => {
     }
   };
 
-  const loadAIInsights = async () => {
-    if (!email) return;
-
-    try {
-      setLoadingAI(true);
-
-      // Fetch AI insights from Supabase edge function
-      const { data: insights, error } = await supabase.functions.invoke('analyze-candidate-profile', {
-        body: {
-          email: email,
-          userId: userId
-        }
-      });
-
-      if (error) {
-        console.warn('AI insights not available:', error);
-        setAiInsights(null);
-      } else if (insights) {
-        setAiInsights(insights);
-      }
-    } catch (error) {
-      console.warn('AI insights failed to load:', error);
-      setAiInsights(null);
-    } finally {
-      setLoadingAI(false);
-    }
-  };
-
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -438,79 +404,6 @@ const Profile = () => {
                   "Save Changes"
                 )}
               </Button>
-            </CardContent>
-          </Card>
-
-          {/* AI Insights Section */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  AI Career Insights
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAIInsights(!showAIInsights)}
-                  disabled={loadingAI}
-                >
-                  {showAIInsights ? 'Hide' : 'Show'} Insights
-                </Button>
-              </CardTitle>
-              <CardDescription>
-                AI-powered analysis of your career profile and application patterns
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingAI ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  <span className="ml-2">Analyzing your profile...</span>
-                </div>
-              ) : showAIInsights && aiInsights ? (
-                <div className="space-y-4">
-                  {aiInsights.strengths && (
-                    <div>
-                      <h4 className="font-semibold text-sm text-green-700 mb-2">💪 Strengths</h4>
-                      <p className="text-sm text-muted-foreground">{aiInsights.strengths}</p>
-                    </div>
-                  )}
-
-                  {aiInsights.improvements && (
-                    <div>
-                      <h4 className="font-semibold text-sm text-blue-700 mb-2">📈 Areas for Improvement</h4>
-                      <p className="text-sm text-muted-foreground">{aiInsights.improvements}</p>
-                    </div>
-                  )}
-
-                  {aiInsights.careerSuggestions && (
-                    <div>
-                      <h4 className="font-semibold text-sm text-purple-700 mb-2">🎯 Career Recommendations</h4>
-                      <p className="text-sm text-muted-foreground">{aiInsights.careerSuggestions}</p>
-                    </div>
-                  )}
-
-                  {aiInsights.applicationTips && (
-                    <div>
-                      <h4 className="font-semibold text-sm text-orange-700 mb-2">💡 Application Tips</h4>
-                      <p className="text-sm text-muted-foreground">{aiInsights.applicationTips}</p>
-                    </div>
-                  )}
-                </div>
-              ) : showAIInsights && !aiInsights ? (
-                <div className="text-center py-8">
-                  <svg className="h-12 w-12 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  <p className="text-muted-foreground">AI insights not available</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Apply to more jobs to get personalized insights
-                  </p>
-                </div>
-              ) : null}
             </CardContent>
           </Card>
 
