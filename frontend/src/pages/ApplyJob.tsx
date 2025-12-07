@@ -337,25 +337,45 @@ const ApplyJob = () => {
 
       console.log('✅ Resume parsing completed, candidate data:', candidateData);
 
-      // Send confirmation email via local Node.js server
+      // Send confirmation email via Edge Function (more reliable than backend API)
       console.log('📧 Starting email sending process...');
       console.log('📧 Email recipient:', email);
-      console.log('📧 Interview link will be generated for candidate ID:', candidateData.candidate?.id || candidateData.id);
+      const candidateId = candidateData.candidate?.id || candidateData.id;
+      console.log('📧 Interview link will be generated for candidate ID:', candidateId);
+      
+      let emailSentSuccessfully = false;
+      
       try {
-        const frontendUrl = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
-        const interviewLink = `${frontendUrl}/interview-quiz/${jobId}/${candidateData.candidate?.id || candidateData.id}`;
-        console.log('📧 Interview link generated:', interviewLink);
+        // Use Edge Function to send email (more reliable, doesn't require backend server)
+        const { data: emailData, error: emailError } = await supabase.functions.invoke(
+          'send-candidate-email',
+          {
+            body: {
+              candidateId: candidateId,
+              type: 'resume_processed',
+              jobPosition: job?.position || undefined,
+            },
+          }
+        );
 
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
-        const emailResponse = await fetch(`${apiBaseUrl}/send-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: email,
-            subject: 'Your Interview Link - HireZen',
-            html: `
+        if (emailError) {
+          console.error('❌ Edge Function email error:', emailError);
+          // Try fallback to backend API if Edge Function fails
+          try {
+            const frontendUrl = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
+            const interviewLink = `${frontendUrl}/interview-quiz/${jobId}/${candidateId}`;
+            console.log('📧 Trying fallback: Interview link generated:', interviewLink);
+
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+            const emailResponse = await fetch(`${apiBaseUrl}/send-email`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: email,
+                subject: 'Your Interview Link - HireZen',
+                html: `
               <!DOCTYPE html>
               <html lang="en">
               <head>
@@ -823,30 +843,44 @@ const ApplyJob = () => {
           }),
         });
 
-        console.log('📧 Email API call completed');
-        if (!emailResponse.ok) {
-          const errorData = await emailResponse.json();
-          console.error('❌ Local server error:', errorData);
-          setEmailSent(false);
+            console.log('📧 Fallback email API call completed');
+            if (!emailResponse.ok) {
+              const errorData = await emailResponse.json();
+              console.error('❌ Fallback email server error:', errorData);
+              emailSentSuccessfully = false;
+            } else {
+              const responseData = await emailResponse.json();
+              console.log('✅ Email sent successfully via fallback server:', responseData);
+              emailSentSuccessfully = true;
+            }
+          } catch (fallbackError) {
+            console.error('❌ Fallback email error:', fallbackError);
+            emailSentSuccessfully = false;
+          }
         } else {
-          const responseData = await emailResponse.json();
-          console.log('✅ Email sent successfully via local server:', responseData);
-          setEmailSent(true);
+          console.log('✅ Email sent successfully via Edge Function:', emailData);
+          emailSentSuccessfully = true;
         }
       } catch (emailError) {
         console.error('❌ Email error:', emailError);
-        setEmailSent(false);
+        emailSentSuccessfully = false;
       }
 
       console.log('🎉 Application submission completed successfully');
+      setEmailSent(emailSentSuccessfully);
 
-      // Check if email was sent successfully
-      setEmailSent(true);
-
-      toast({
-        title: "Application submitted!",
-        description: "Your application has been received and confirmation email sent. We'll be in touch soon.",
-      });
+      if (emailSentSuccessfully) {
+        toast({
+          title: "Application submitted!",
+          description: "Your application has been received and confirmation email sent. We'll be in touch soon.",
+        });
+      } else {
+        toast({
+          title: "Application submitted!",
+          description: "Your application has been received. However, we couldn't send the confirmation email. Please check your email inbox or contact support.",
+          variant: "default",
+        });
+      }
 
       // Reset form
       setResumeFile(null);
