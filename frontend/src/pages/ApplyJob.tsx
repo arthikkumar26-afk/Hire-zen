@@ -34,6 +34,11 @@ const ApplyJob = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [emailSent, setEmailSent] = useState<boolean | null>(null);
+  const [manualName, setManualName] = useState<string>('');
+  const [manualEmail, setManualEmail] = useState<string>('');
+  const [manualPhone, setManualPhone] = useState<string>('');
+  const [showManualFields, setShowManualFields] = useState(false);
+  const [extractionFailed, setExtractionFailed] = useState(false);
 
   useEffect(() => {
     loadJob();
@@ -237,21 +242,29 @@ const ApplyJob = () => {
       // Extract email address from resume text
       const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
       const emailMatches = resumeText.match(emailRegex);
-      const extractedEmail = emailMatches ? emailMatches[0] : null;
+      let extractedEmail = emailMatches ? emailMatches[0] : null;
       console.log('📧 Email extraction result:', extractedEmail ? 'Found: ' + extractedEmail : 'Not found');
 
+      // If extraction failed, check for manual input
       if (!extractedEmail) {
-        console.log('🚫 No email found in resume - cannot proceed with application');
-        toast({
-          title: "Email Required",
-          description: "No email address found in your resume. Please include your email address in the resume.",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
+        console.log('🚫 No email found in resume - checking manual input...');
+        if (!manualEmail || !manualEmail.trim()) {
+          setExtractionFailed(true);
+          setShowManualFields(true);
+          toast({
+            title: "Email Required",
+            description: "No email found in resume. Please enter your details manually below.",
+            variant: "destructive",
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        // Use manual email if provided
+        extractedEmail = manualEmail.trim();
+        console.log('✅ Using manual email:', extractedEmail);
       }
 
-      console.log('✅ Email validation passed, using extracted email:', extractedEmail);
+      console.log('✅ Email validation passed, using email:', extractedEmail);
 
       // Extract name from resume text (simple extraction)
       const nameRegex = /(?:name|full name)[\s:]*([^\n\r]+)/i;
@@ -265,6 +278,12 @@ const ApplyJob = () => {
         if (altNameMatch) {
           extractedName = altNameMatch[1].trim();
         }
+      }
+
+      // Use manual name if provided and extraction failed
+      if ((extractedName === 'Applicant' || !extractedName) && manualName && manualName.trim()) {
+        extractedName = manualName.trim();
+        console.log('✅ Using manual name:', extractedName);
       }
 
       console.log('👤 Name extraction result:', extractedName);
@@ -307,10 +326,10 @@ const ApplyJob = () => {
       console.log('📝 Email (extracted):', extractedEmail);
       console.log('📝 Phone (extracted):', extractedPhone);
 
-      // Use extracted data instead of form data
-      const fullName = extractedName;
-      const email = extractedEmail;
-      const phone = extractedPhone || '';
+      // Use extracted data, fallback to manual input
+      const fullName = extractedName !== 'Applicant' ? extractedName : (manualName || 'Applicant');
+      const email = extractedEmail || manualEmail;
+      const phone = extractedPhone || manualPhone || '';
 
       // Parse resume and save candidate using edge function (for AI processing)
       console.log('🤖 Invoking parse-resume edge function...');
@@ -1007,11 +1026,91 @@ const ApplyJob = () => {
                 </div>
                 <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
                   Your application will be processed using information extracted from your resume.
-                  Please ensure your resume contains your full name, email address, and contact details.
+                  If extraction fails, you can enter your details manually using the option below.
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4" id="application-form-inner">
+              {/* Manual Input Fields - Shown if extraction fails or user toggles */}
+              {(showManualFields || extractionFailed) && (
+                <div className="space-y-4 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <h3 className="font-semibold text-amber-800 dark:text-amber-200">Enter Your Details Manually</h3>
+                    </div>
+                    {!extractionFailed && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowManualFields(false)}
+                      >
+                        Hide
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    {extractionFailed 
+                      ? "We couldn't extract your information from the resume. Please fill in the details below."
+                      : "You can also enter your details manually to override extracted values."}
+                  </p>
+                  
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-name">Full Name {extractionFailed && '*'}</Label>
+                      <Input
+                        id="manual-name"
+                        type="text"
+                        placeholder="Enter your full name"
+                        value={manualName}
+                        onChange={(e) => setManualName(e.target.value)}
+                        required={extractionFailed}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-email">Email Address {extractionFailed && '*'}</Label>
+                      <Input
+                        id="manual-email"
+                        type="email"
+                        placeholder="your.email@example.com"
+                        value={manualEmail}
+                        onChange={(e) => setManualEmail(e.target.value)}
+                        required={extractionFailed}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-phone">Phone Number (Optional)</Label>
+                      <Input
+                        id="manual-phone"
+                        type="tel"
+                        placeholder="+1 234 567 8900"
+                        value={manualPhone}
+                        onChange={(e) => setManualPhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Toggle button to show manual fields */}
+              {!showManualFields && !extractionFailed && (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowManualFields(true)}
+                  >
+                    Or enter details manually
+                  </Button>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="resume">Resume * (PDF or Word document)</Label>
 
@@ -1133,7 +1232,7 @@ const ApplyJob = () => {
         <Button
           onClick={(e) => {
             e.preventDefault();
-            const form = document.getElementById('application-form')?.querySelector('form') as HTMLFormElement;
+            const form = document.getElementById('application-form-inner') as HTMLFormElement;
             if (form) {
               // Check if form is valid before submitting
               if (form.checkValidity()) {
