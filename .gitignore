@@ -40,6 +40,11 @@ build/
 *.swp
 *.swo
 *~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Frontend data files (only ignore generated/transpiled files)
 # Keep source data files like locationData.ts
