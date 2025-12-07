@@ -1,9 +1,16 @@
+// IMPORTANT: Import Sentry instrumentation first, before any other imports
+import "./instrument.js";
+
 import express from 'express';
 import cors from 'cors';
 import { Resend } from 'resend';
 import { MongoClient, GridFSBucket, ObjectId } from 'mongodb';
 import multer from 'multer';
 import path from 'path';
+import * as Sentry from "@sentry/node";
+import logger from './utils/logger.js';
+import { validate } from './middleware/validate.js';
+import * as schemas from './validators/schemas.js';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -15,17 +22,23 @@ let mongoClient;
 let gfsBucket;
 let upload;
 
-// CORS Configuration - Allow specific origins
-const allowedOrigins = [
-  'https://hirezen-dv1h.vercel.app', // Production frontend
-  'https://hirezen-dv1h.vercel.app/',
-  'https://hirezen-dv1h-9i1nw7gw4-shiva1533s-projects.vercel.app', // Current Vercel deployment
-  'https://hirezen-dv1h-9i1nw7gw4-shiva1533s-projects.vercel.app/',
-  'http://localhost:5173',            // Local Vite dev (current)
-  'http://localhost:5179',            // Alternative local port
-  'http://localhost:3000',            // Alternative local port
-  'http://localhost:8080'             // Alternative local port
-];
+// CORS Configuration - Load allowed origins from environment variable
+// Format: comma-separated URLs, e.g., "https://app1.com,https://app2.com,http://localhost:5173"
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
+const allowedOrigins = allowedOriginsEnv
+  ? allowedOriginsEnv.split(',').map(origin => origin.trim()).filter(Boolean)
+  : [
+      // Default fallback for local development only
+      'http://localhost:5173',
+      'http://localhost:5179',
+      'http://localhost:3000',
+      'http://localhost:8080'
+    ];
+
+// In production, warn if no origins are configured
+if (process.env.NODE_ENV === 'production' && !process.env.ALLOWED_ORIGINS) {
+  logger.warn('ALLOWED_ORIGINS not set in production. Using default localhost origins only.');
+}
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -40,13 +53,72 @@ app.use(cors({
   maxAge: 86400
 }));
 
+// Sentry Express integration is automatically set up via instrument.js
+
 // Allow preflight for all routes
 app.options('*', cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// Initialize Resend
-const resend = new Resend(process.env.RESEND_API_KEY || 're_NZzC538G_L44QCHEyZmkmJBy7JMBqkypF');
+// Rate Limiting Middleware
+// Simple in-memory rate limiter (consider using Redis for production scaling)
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10); // 1 minute default
+const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10); // 100 requests per window
+
+const rateLimiter = (req, res, next) => {
+  const clientId = req.ip || req.connection.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  // Clean up old entries periodically
+  if (rateLimitStore.size > 10000) {
+    for (const [key, value] of rateLimitStore.entries()) {
+      if (now - value.resetTime > RATE_LIMIT_WINDOW_MS) {
+        rateLimitStore.delete(key);
+      }
+    }
+  }
+
+  const clientData = rateLimitStore.get(clientId);
+  
+  if (!clientData || now > clientData.resetTime) {
+    // New client or window expired, reset
+    rateLimitStore.set(clientId, {
+      count: 1,
+      resetTime: now + RATE_LIMIT_WINDOW_MS
+    });
+    return next();
+  }
+
+  if (clientData.count >= RATE_LIMIT_MAX_REQUESTS) {
+    // Rate limit exceeded
+    const retryAfter = Math.ceil((clientData.resetTime - now) / 1000);
+    return res.status(429).json({
+      success: false,
+      error: 'Too many requests',
+      message: `Rate limit exceeded. Please try again after ${retryAfter} seconds.`,
+      retryAfter
+    });
+  }
+
+  // Increment count
+  clientData.count++;
+  next();
+};
+
+// Apply rate limiting to all routes except health check
+app.use((req, res, next) => {
+  if (req.path === '/health') {
+    return next(); // Skip rate limiting for health checks
+  }
+  rateLimiter(req, res, next);
+});
+
+// Initialize Resend - API key must be provided via environment variable
+if (!process.env.RESEND_API_KEY) {
+  throw new Error('RESEND_API_KEY environment variable is required');
+}
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Connect to MongoDB and initialize GridFS
 async function connectMongoDB() {
@@ -92,25 +164,27 @@ async function connectMongoDB() {
 
     return db;
   } catch (error) {
-    console.error('❌ MongoDB Atlas connection error:', error.message);
-    console.error('🔍 Connection string:', MONGODB_URI.replace(/:([^:@]{4})[^:@]*@/, ':$1****@')); // Hide password
+    logger.error({ 
+      error: error.message,
+      connectionString: MONGODB_URI.replace(/:([^:@]{4})[^:@]*@/, ':$1****@')
+    }, 'MongoDB Atlas connection error');
     return null;
   }
 }
 
 // Interview results endpoints
-app.post('/interview-results', async (req, res) => {
+app.post('/interview-results', validate(schemas.createInterviewResultSchema, 'body'), async (req, res) => {
   try {
-    console.log('📥 Received interview results request:', {
+    logger.info({
       candidate_email: req.body.candidate_email,
       candidate_name: req.body.candidate_name,
       interview_score: req.body.interview_score,
       has_video: !!req.body.video_data
-    });
+    }, 'Received interview results request');
 
     const db = await connectMongoDB();
     if (!db) {
-      console.error('❌ MongoDB connection failed');
+      logger.error('MongoDB connection failed');
       return res.status(500).json({ success: false, error: 'Database connection failed' });
     }
 
@@ -130,12 +204,15 @@ app.post('/interview-results', async (req, res) => {
     delete interviewData.video_mime_type;
 
     const result = await collection.insertOne(interviewData);
-    console.log('✅ Interview results saved to MongoDB:', result.insertedId);
-    console.log('📊 Saved data for candidate:', req.body.candidate_email, 'Score:', req.body.interview_score);
+    logger.info({
+      insertedId: result.insertedId,
+      candidate_email: req.body.candidate_email,
+      score: req.body.interview_score
+    }, 'Interview results saved to MongoDB');
 
     // If video data exists, store it separately (optional)
     if (videoData && videoMimeType) {
-      console.log('🎥 Video data provided but not storing in database (as requested)');
+      logger.debug('Video data provided but not storing in database');
     }
 
     res.json({
@@ -145,7 +222,7 @@ app.post('/interview-results', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error saving interview results:', error);
+    logger.error({ error: error.message, stack: error.stack }, 'Error saving interview results');
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -185,7 +262,7 @@ app.get('/interview-results', async (req, res) => {
  });
 
 // Get single interview result by ID
-app.get('/interview-results/:id', async (req, res) => {
+app.get('/interview-results/:id', validate(schemas.interviewResultIdSchema, 'params'), async (req, res) => {
   try {
     const db = await connectMongoDB();
     if (!db) {
@@ -794,15 +871,20 @@ app.get('/videos', async (req, res) => {
   }
 });
 
+// Email configuration - using hire-zen.com domain
+const EMAIL_FROM = process.env.EMAIL_FROM || 'HireZen HR <hr@hire-zen.com>';
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || 'hr@hire-zen.com';
+
 // Email endpoint
 app.post('/send-email', async (req, res) => {
   try {
-    const { to, subject, html, from } = req.body;
+    const { to, subject, html, from, replyTo } = req.body;
 
     console.log('Sending email to:', to);
 
     const emailResponse = await resend.emails.send({
-      from: from || 'HireZen HR <hr@gradia.co.in>',
+      from: from || EMAIL_FROM,
+      replyTo: replyTo || EMAIL_REPLY_TO,
       to: [to],
       subject: subject || 'Your Resume Has Been Received',
       html: html,
@@ -1045,6 +1127,68 @@ app.get('/video-analysis', (req, res) => {
 </body>
 </html>`;
   res.send(html);
+});
+
+// The Sentry error handler must be registered before any other error middleware and after all controllers
+Sentry.setupExpressErrorHandler(app);
+
+// Centralized Error Handling Middleware
+// Must be defined AFTER Sentry error handler but BEFORE app.listen
+app.use((error, req, res, next) => {
+  // Error is already captured by Sentry via setupExpressErrorHandler
+  // Additional logging
+  logger.error({
+    error: error.message,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    path: req.path,
+    method: req.method,
+    ip: req.ip
+  }, 'Unhandled error');
+
+  // Don't expose internal error details in production
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  // Handle specific error types
+  if (error.name === 'MulterError') {
+    return res.status(400).json({
+      success: false,
+      error: 'File upload error',
+      message: isDevelopment ? error.message : 'Invalid file upload'
+    });
+  }
+
+  if (error.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation error',
+      message: isDevelopment ? error.message : 'Invalid request data'
+    });
+  }
+
+  if (error.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      error: 'CORS error',
+      message: 'Origin not allowed'
+    });
+  }
+
+  // Generic error response
+  res.status(error.status || 500).json({
+    success: false,
+    error: 'Internal server error',
+    message: isDevelopment ? error.message : 'An unexpected error occurred',
+    ...(isDevelopment && { stack: error.stack })
+  });
+});
+
+// 404 Handler - Must be after all routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Route ${req.method} ${req.path} not found`
+  });
 });
 
 // Health check

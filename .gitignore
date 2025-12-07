@@ -66,3 +66,6 @@ coverage/
 # Miscellaneous
 *.tgz
 *.tar.gz
+
+# Documentation folder (internal docs, not for GitHub)
+doc/

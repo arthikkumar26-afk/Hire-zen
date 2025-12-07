@@ -49,6 +49,12 @@ class Resend {
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY") || Deno.env.get("VITE_RESEND_API_KEY")!);
 
+// Email configuration - using hire-zen.com domain
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "HireZen HR <hr@hire-zen.com>";
+const EMAIL_REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") || "hr@hire-zen.com";
+const EMAIL_NOREPLY = Deno.env.get("EMAIL_NOREPLY") || "noreply@hire-zen.com";
+const EMAIL_NOREPLY_NAME = Deno.env.get("EMAIL_NOREPLY_NAME") || "HireZen";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -103,10 +109,12 @@ const getEmailTemplate = (
                   <li>Our recruitment team will review your application shortly</li>
                 </ul>
                 <p>We'll keep you updated throughout the recruitment process. If your profile matches any of our open positions, you'll hear from us soon!</p>
-                <p>Best regards,<br><strong>The Recruitment Team</strong></p>
+                <p>Best regards,<br><strong>HireZen HR Team</strong></p>
               </div>
               <div class="footer">
-                <p>This is an automated message from our recruitment system.</p>
+                <p><strong>HireZen - Modern Recruitment Platform</strong></p>
+                <p>Email: <a href="mailto:hr@hire-zen.com" style="color: #667eea;">hr@hire-zen.com</a> | Website: <a href="https://hire-zen.com" style="color: #667eea;">hire-zen.com</a></p>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">This is an automated message from HireZen recruitment system.</p>
               </div>
             </div>
           </body>
@@ -172,10 +180,12 @@ const getEmailTemplate = (
                 </p>
                 
                 <p>Best of luck!</p>
-                <p>Best regards,<br><strong>The Recruitment Team</strong></p>
+                <p>Best regards,<br><strong>HireZen HR Team</strong></p>
               </div>
               <div class="footer">
-                <p>This is an automated message from our recruitment system.</p>
+                <p><strong>HireZen - Modern Recruitment Platform</strong></p>
+                <p>Email: <a href="mailto:hr@hire-zen.com" style="color: #667eea;">hr@hire-zen.com</a> | Website: <a href="https://hire-zen.com" style="color: #667eea;">hire-zen.com</a></p>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">This is an automated message from HireZen recruitment system.</p>
               </div>
             </div>
           </body>
@@ -267,10 +277,12 @@ const getEmailTemplate = (
 
                 <p>If you have any questions, please don't hesitate to reach out to our recruitment team.</p>
                 
-                <p>Best regards,<br><strong>The Recruitment Team</strong></p>
+                <p>Best regards,<br><strong>HireZen HR Team</strong></p>
               </div>
               <div class="footer">
-                <p>This is an automated message from our recruitment system.</p>
+                <p><strong>HireZen - Modern Recruitment Platform</strong></p>
+                <p>Email: <a href="mailto:hr@hire-zen.com" style="color: #667eea;">hr@hire-zen.com</a> | Website: <a href="https://hire-zen.com" style="color: #667eea;">hire-zen.com</a></p>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 16px;">This is an automated message from HireZen recruitment system.</p>
               </div>
             </div>
           </body>
@@ -312,9 +324,20 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { subject, html } = getEmailTemplate(type, candidateName, oldStage, newStage, position, interviewToken);
 
+    // Determine sender based on email type
+    let fromEmail = EMAIL_FROM;
+    let replyTo = EMAIL_REPLY_TO;
+
+    // Use noreply for automated confirmations (but still allow replies via replyTo)
+    if (type === "resume_processed") {
+      fromEmail = `${EMAIL_NOREPLY_NAME} <${EMAIL_NOREPLY}>`;
+      replyTo = EMAIL_REPLY_TO; // Replies go to HR team
+    }
+
     // Send email via Resend
     const emailResponse = await resend.emails.send({
-      from: "HireZen HR <hr@support.iare.ac.in>", // Using your verified domain
+      from: fromEmail,
+      replyTo: replyTo,
       to: [candidateEmail],
       subject: subject,
       html: html,

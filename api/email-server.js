@@ -286,15 +286,20 @@ app.get('/activity-logs/:id/video', async (req, res) => {
   }
 });
 
+// Email configuration - using hire-zen.com domain
+const EMAIL_FROM = process.env.EMAIL_FROM || 'HireZen HR <hr@hire-zen.com>';
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || 'hr@hire-zen.com';
+
 // Email endpoint
 app.post('/send-email', async (req, res) => {
   try {
-    const { to, subject, html, from } = req.body;
+    const { to, subject, html, from, replyTo } = req.body;
 
     console.log('Sending email to:', to);
 
     const emailResponse = await resend.emails.send({
-      from: from || 'HireZen HR <hr@gradia.co.in>',
+      from: from || EMAIL_FROM,
+      replyTo: replyTo || EMAIL_REPLY_TO,
       to: [to],
       subject: subject || 'Your Resume Has Been Received',
       html: html,

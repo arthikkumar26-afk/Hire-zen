@@ -1,0 +1,53 @@
+project_id = "yinboodcapzyurhsbbbo"
+
+# Internal admin/recruiter functions - require authentication
+[functions.generate-job-description]
+verify_jwt = true
+
+[functions.analyze-candidate-match]
+verify_jwt = true
+
+[functions.match-candidate-to-jobs]
+verify_jwt = true
+
+[functions.match-all-candidates-to-job]
+verify_jwt = true
+
+# Public for PDF-to-template (uses service role inside for DB insert; validate inputs server-side)
+[functions.extract-template-from-pdf]
+verify_jwt = false
+
+[functions.generate-interview-questions]
+verify_jwt = true
+
+[functions.parse-interview-questions]
+verify_jwt = true
+
+# Functions that may be called by candidates/public but need their own validation
+# These remain public but should validate interview_token or other secure parameters
+[functions.evaluate-interview-answers]
+verify_jwt = false
+
+# Resume parsing functions - used by public job application form
+# Consider adding rate limiting and input validation
+[functions.parse-resume]
+verify_jwt = false
+
+[functions.parse-pdf]
+verify_jwt = false
+
+# Internal resume extraction - requires authentication
+[functions.extract-candidate-info]
+verify_jwt = true
+
+# System notification function
+[functions.send-candidate-email]
+verify_jwt = false
+
+# Batch resume upload with service role (uses server-side validation)
+[functions.batch-upload-resumes]
+verify_jwt = false
+
+# Video analysis function
+[functions.analyze-interview-video]
+verify_jwt = false
