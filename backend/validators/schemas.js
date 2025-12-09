@@ -94,3 +94,4 @@ export const interviewVideoIdSchema = z.object({
   id: mongoIdSchema,
 });
 
+

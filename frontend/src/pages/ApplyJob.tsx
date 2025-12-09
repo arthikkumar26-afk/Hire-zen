@@ -356,10 +356,35 @@ const ApplyJob = () => {
 
       console.log('✅ Resume parsing completed, candidate data:', candidateData);
 
+      // Create exam invitation (on-demand with deadline)
+      console.log('📝 Creating exam invitation...');
+      const candidateId = candidateData.candidate?.id || candidateData.id;
+      
+      try {
+        const { data: examInvitation, error: examError } = await supabase.functions.invoke(
+          'create-exam-invitation',
+          {
+            body: {
+              candidateId: candidateId,
+              jobId: jobId,
+            },
+          }
+        );
+
+        if (examError) {
+          console.error('⚠️ Failed to create exam invitation:', examError);
+          // Continue anyway - email will be sent without exam link
+        } else {
+          console.log('✅ Exam invitation created:', examInvitation);
+        }
+      } catch (error) {
+        console.error('⚠️ Error creating exam invitation:', error);
+        // Continue - don't block application submission
+      }
+
       // Send confirmation email via Edge Function (more reliable than backend API)
       console.log('📧 Starting email sending process...');
       console.log('📧 Email recipient:', email);
-      const candidateId = candidateData.candidate?.id || candidateData.id;
       console.log('📧 Interview link will be generated for candidate ID:', candidateId);
       
       let emailSentSuccessfully = false;
@@ -373,6 +398,7 @@ const ApplyJob = () => {
               candidateId: candidateId,
               type: 'resume_processed',
               jobPosition: job?.position || undefined,
+              jobId: jobId, // Pass jobId to include interview link in email
             },
           }
         );

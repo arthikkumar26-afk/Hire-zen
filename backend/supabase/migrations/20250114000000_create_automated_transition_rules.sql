@@ -298,3 +298,4 @@ COMMENT ON TABLE public.automated_transition_rules IS 'Configuration table for a
 COMMENT ON TABLE public.transition_executions IS 'Audit log of all transition executions (automatic, manual, scheduled)';
 COMMENT ON FUNCTION public.check_transition_conditions IS 'Evaluates if transition conditions are met for a candidate and rule';
 
+

@@ -1,12 +1,15 @@
+import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Mail, Phone, Calendar, Briefcase, Target, FileText, Clock, MapPin, Download, ExternalLink, User, FileDown } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Mail, Phone, Calendar, Briefcase, Target, FileText, Clock, MapPin, Download, ExternalLink, User, FileDown, Video, Play } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Candidate } from "@/hooks/useCandidates";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -18,6 +21,40 @@ interface ProfileDetailDrawerProps {
 
 const ProfileDetailDrawer = ({ candidate, open, onOpenChange }: ProfileDetailDrawerProps) => {
   const { toast } = useToast();
+  const [examBookings, setExamBookings] = useState<any[]>([]);
+  const [loadingExams, setLoadingExams] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (candidate?.id && open) {
+      loadExamBookings();
+    }
+  }, [candidate?.id, open]);
+  
+  const loadExamBookings = async () => {
+    if (!candidate?.id) return;
+    
+    setLoadingExams(true);
+    try {
+      const { data, error } = await supabase
+        .from("exam_bookings")
+        .select(`
+          *,
+          jobs (position, id)
+        `)
+        .eq("candidate_id", candidate.id)
+        .eq("status", "completed")
+        .eq("video_recorded", true)
+        .order("completed_at", { ascending: false });
+
+      if (error) throw error;
+      setExamBookings(data || []);
+    } catch (error: any) {
+      console.error("Error loading exam bookings:", error);
+    } finally {
+      setLoadingExams(false);
+    }
+  };
   
   if (!candidate) return null;
 
@@ -579,6 +616,50 @@ const ProfileDetailDrawer = ({ candidate, open, onOpenChange }: ProfileDetailDra
               </>
             )}
 
+            {/* Exam Videos */}
+            {examBookings.length > 0 && (
+              <>
+                <section>
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <Video className="h-4 w-4 text-primary" />
+                    Exam Recordings
+                  </h3>
+                  <div className="space-y-3">
+                    {examBookings.map((booking) => (
+                      <div
+                        key={booking.id}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex-1">
+                          <div className="font-medium text-foreground">
+                            {booking.jobs?.position || "Screening Exam"}
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {booking.scheduled_start_time && format(new Date(booking.scheduled_start_time), "MMM d, yyyy 'at' h:mm a")}
+                            {booking.score !== null && (
+                              <span className="ml-2">• Score: {booking.score}%</span>
+                            )}
+                          </div>
+                        </div>
+                        {booking.video_url && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedVideo(booking.video_url)}
+                          >
+                            <Play className="mr-2 h-4 w-4" />
+                            View Video
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <Separator />
+              </>
+            )}
+
             {/* Activity Timeline */}
             <section>
               <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -636,6 +717,30 @@ const ProfileDetailDrawer = ({ candidate, open, onOpenChange }: ProfileDetailDra
           </div>
         </ScrollArea>
       </SheetContent>
+
+      {/* Video Viewer Dialog */}
+      <Dialog open={!!selectedVideo} onOpenChange={(open) => !open && setSelectedVideo(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Exam Recording</DialogTitle>
+          </DialogHeader>
+          {selectedVideo && (
+            <div className="space-y-4">
+              <video
+                src={selectedVideo}
+                controls
+                className="w-full rounded-lg border"
+                style={{ maxHeight: "70vh" }}
+              >
+                Your browser does not support the video tag.
+              </video>
+              <div className="text-sm text-muted-foreground">
+                <p>This is a recording of the candidate's exam session. You can use this for manual review and verification.</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 };

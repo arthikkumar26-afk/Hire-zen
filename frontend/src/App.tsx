@@ -40,6 +40,10 @@ import ActivityLog from "./pages/pipeline/ActivityLog";
 import Profile from "./pages/Profile";
 import GeoLocation from "./pages/GeoLocation";
 import InterviewQuiz from "./pages/InterviewQuiz";
+import Exam from "./pages/Exam";
+import ExamScheduling from "./pages/ExamScheduling";
+import ExamSlotManagement from "./pages/admin/ExamSlotManagement";
+import ExamSettings from "./pages/admin/ExamSettings";
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -85,6 +89,10 @@ const App = () => (
         <Route path="/interview-quiz/:jobId/:candidateId" element={<InterviewQuiz />} />
         <Route path="/quiz/:jobId" element={<InterviewQuiz />} />
         <Route path="/quiz/:jobId/:candidateId" element={<InterviewQuiz />} />
+        <Route path="/exam/schedule/:jobId/:candidateId" element={<ExamScheduling />} />
+        <Route path="/exam/:token" element={<Exam />} />
+        <Route path="/admin/exam-slots/:id" element={<ExamSlotManagement />} />
+        <Route path="/admin/exam-settings/:id" element={<ExamSettings />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
